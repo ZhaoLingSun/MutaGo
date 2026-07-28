@@ -1,6 +1,6 @@
 # 一致性测试
 
-本目录预留给 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录当前尚未包含完整 reducer/oracle 差分源码、百万动作夹具、模型、报告或 CI 配置，后续实现按门槛进入。
+本目录用于 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录现有一个仅覆盖 `NORMAL` / `PASS`、空账本 settlement 与普通计分路径的独立 Python 慢速参考切片，并加入明确标为 **UNFROZEN v0、仅测试排练** 的独立 C++ JSONL probe 与 Python 差分驱动。它们仍不是完整特殊能力 oracle、生产协议、冻结语义投影、百万动作夹具、门槛报告或 CI 配置。
 
 ## 文档状态
 
@@ -17,6 +17,67 @@
 - Python 输出不得称为“权威事件”，不得进入生产请求路径，也不得自动覆盖 C++。
 - C++ 与 Python 的任何有意义差异都必须使测试失败并进入调查；C++ 的生产权威地位不允许静默忽略差异，Python 的参考地位也不允许自动裁决差异。
 - 两侧不得共享 Collapse Go 状态转移实现、由同一核心生成预期，或使用会删除规则意义差异的归一化。
+
+## 当前 Python NORMAL/PASS 参考切片
+
+`../../python/mutago/collapse_go/normal_pass_oracle.py` 是独立、仅使用 Python 标准库的慢速参考切片。当前范围包括：
+
+- Action V1 关闭式 envelope 的严格解码，以及 9×9、13×13、19×19 居中 footprint；
+- 每方各能力 0 或 1 的可配置配额；
+- `NORMAL` 的全盘 N4 棋块/气重建、同时提走全部对方零气棋块、自杀与 occupancy-only PSK；
+- `PASS` 的 PSK 拒绝豁免、重复稳定占据追加、阈值或阈值前双停着触发的空账本 settlement；
+- settlement 后两次新停着、当前稳定盘面的中国式面积计分、7.5 贴目和终局事件的重复 PSK 追加；
+- 冻结的适用拒绝优先级，包括 `POINT_OFF_BOARD` 先于终局、阶段和行动者检查；零配额特殊动作的 `QUOTA_EXHAUSTED`，以及普通阶段特殊动作的 `INVALID_PHASE`。
+
+该切片不复用 `python/katago/game`、`tools/contract` 的规则决定辅助函数或 C++。非零配额且通过前置检查的潜在合法特殊动作会显式抛出 `UnsupportedSliceAction`，而不会伪造语义拒绝。Immortal、Double、Eightway 的实际能力语义、非空特殊事件账本与 Double continuation 仍未实现。oracle 包自身保持无 subprocess、无 JSONL transport、无 C++ 依赖；下节的外部测试驱动单独负责启动 probe。
+
+从仓库根目录运行当前切片测试：
+
+```bash
+PYTHONPATH=python python3 -m unittest -v tests/conformance/test_python_normal_pass_oracle.py
+```
+
+这些测试证明的是上述受限切片的本地行为，不表示完整 Python oracle、完整 C++ reducer、一致性驱动、`GATE-RULE-1M` 或 `GATE-PROD` 已完成或通过。
+
+## NORMAL/PASS 差分排练：UNFROZEN v0，仅测试
+
+`../../cpp/tests/collapsereducerprobe.cpp` 与 `normal_pass_differential.py` 构成一个明确隔离的排练载体：
+
+- CMake 目标名为 `mutago-collapse-slice-probe`，使用 `EXCLUDE_FROM_ALL`，不进入默认构建，也不是生产 gameplay 入口；
+- 请求协议版本字面值为 `normal-pass-diff-v0-unfrozen`。每行是一个完整 episode，关闭式字段为 `protocolVersion`、`episodeId`、`boardSize`、`quotaMode`、`steps`；每步恰含 `candidateActor` 与冻结的 Action V1 envelope；
+- `boardSize` 仅允许 `9`、`13`、`19`，`quotaMode` 仅允许 `ZERO` 或 `ONE`。`episodeId` 是 1–128 字符的 ASCII 测试标识符；每个 episode 最多 160 步，canonical 请求与原始输入行均不得超过 1 MiB，canonical 响应行不得超过 16 MiB；
+- probe 使用现有 `RulesetIdentity::parseRestrictedJson`、`GameAction::ofJson` 和受限 profile canonicalizer，并以预分配的有界 reader 读取每一行；Windows 上显式把 stdin/stdout 切换为二进制模式。结构错误、未知字段、错误版本、重复键、非规范 Action V1、超长行、缺少最终换行或资源上限错误均使当前完整 frame fail closed；不输出部分 episode，诊断仅写 stderr；
+- 每步响应精确包含接受、拒绝或 `UNSUPPORTED` 状态、错误码、按颜色拆分的 board-local 捕获点、settlement 原因、终局计分事件标志、黑白占据、actor、phase、`A`、连续停着、剩余配额、完整有序 occupancy-only PSK 历史及半目整数计分投影；
+- Python 驱动强制并核验 oracle 模块来自当前 checkout 的 `python/`，先构造完整有界语料，再用独立 writer 与有界 reader 线程启动外部 probe；stdout 总量限制为 64 MiB，stderr 限制为 1 MiB，超限或 deadline 到达即终止子进程。独立 oracle 包本身仍不调用 subprocess；驱动校验响应行数、16 MiB 单行上限、canonical JSON、所有关闭式嵌套类型/枚举、逐字段值和逐列表顺序，并在首个差异停止比较；
+- 随机语料只使用零配额，随机源是版本化的 SHA-256 counter 字节流。随机固定结构覆盖 9/13/19、全部 1445 个 Action V1 ID、当前行动者 `NORMAL` / `PASS`、错误行动者、footprint 外 ID、已占点、settlement 后和终局后候选；全 ID episode 按 160 步边界拆帧。额外人工 episode 保证三个棋盘都恰在 `A=T` 比较 threshold settlement；`ONE` 配额仅用于人工用例中的前置拒绝与明确 `UNSUPPORTED`；
+- CLI 的必需 `--probe`、`--seed`、`--candidate-count` 分别控制显式可执行文件路径、确定性种子与零配额随机候选数；当前随机语料边界把候选数限制为 1478–10000。失败诊断携带 seed、生成器版本、候选数、canonical 请求和截至首个差异的动作前缀；成功时只打印一行确定性 canonical JSON 摘要和 transcript SHA-256；
+
+从仓库根目录构建和运行：
+
+```bash
+cmake -S cpp -B build/collapse-slice -DUSE_BACKEND=EIGEN -DUSE_AVX2=1
+cmake --build build/collapse-slice \
+  --target mutago-collapse-slice-probe --config RelWithDebInfo -j4
+PYTHONPATH=python python3 tests/conformance/normal_pass_differential.py \
+  --probe build/collapse-slice/mutago-collapse-slice-probe \
+  --seed mutago-normal-pass-rehearsal \
+  --candidate-count 10000
+```
+
+多配置生成器通常把可执行文件放在 `build/collapse-slice/RelWithDebInfo/` 等配置子目录；此时必须把该实际路径显式传给 `--probe`，Windows 文件名还包含 `.exe`。
+
+标准库单元测试默认不启动可执行文件；设置环境变量后会额外运行 opt-in 集成测试和 malformed-frame 检查：
+
+```bash
+PYTHONPATH=python python3 -m unittest -v \
+  tests/conformance/test_normal_pass_differential.py
+
+MUTAGO_COLLAPSE_SLICE_PROBE="$PWD/build/collapse-slice/mutago-collapse-slice-probe" \
+PYTHONPATH=python python3 -m unittest -v \
+  tests/conformance/test_normal_pass_differential.py
+```
+
+该载体只是当前受限切片的排练。其 frame 字段与摘要格式保持 **UNFROZEN**，不得称为 `semantic-projection-v1`、生产协议、完整 C++ reducer、完整 Python oracle、完整特殊能力差分、`GATE-RULE-1M` 或 `GATE-PROD` 证据。`10000` 只是本排练的随机候选数，不是百万动作门槛，也不能与未来影响语义的修改前后计数合并。
 
 ## 必测冻结契约
 
@@ -90,4 +151,4 @@ M0 `conformance-fixture-v1`、`semantic-projection-v1` 和 `mismatch-bundle-v1` 
 
 ## English Summary
 
-Conformance tests compare the sole C++ production authority with an independently implemented slow Python oracle. The frozen identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Coverage enforces the closed `schemaVersion`/`actionId`/`kind` Action V1 envelope, the 1,445-way kind-major codec, initial empty occupancy as PSK entry zero, every stable action/terminal and settlement-event append, and exclusion of unstable intermediates. The MVP has no dead-stone negotiation. Tests must arbitrate termination-first versus action-first ordering: immediate administrative termination is valid only at exposed stable boundaries before an action commits, while a committed action’s triggered settlement completes atomically and exposes no internal command boundary. Operational timeouts and cancellation never synthesize game `TIMEOUT`. The early gate compares at least one million reproducible legal and structured-illegal candidate atomic actions with zero reproducible semantic differences before search, product, or training-data production depends on the rules.
+Conformance tests compare the sole C++ production authority with an independently implemented slow Python oracle. The directory contains a standard-library-only Python reference slice for strict Action V1 decoding, NORMAL/PASS play, full-scan N4 capture and suicide, ordered occupancy-only PSK, empty-ledger settlement, and exact ordinary-play Chinese area scoring. It also contains an explicitly test-only, **UNFROZEN v0** rehearsal: the `mutago-collapse-slice-probe` target is excluded from the default build and exchanges complete-episode canonical JSONL frames with an external Python driver under protocol literal `normal-pass-diff-v0-unfrozen`. The probe reuses the existing restricted JSON and Action V1 parsers, fails closed without a partial frame on malformed input, keeps diagnostics on stderr, and uses binary stdin/stdout on Windows. The driver forces and verifies that oracle modules come from this checkout, uses a versioned SHA-256 counter stream, covers all 1,445 action IDs plus structured legal and illegal candidates and explicit `A=T` settlement on centered 9×9, 13×13, and 19×19 zero-quota states, validates every closed nested response shape, compares every projected field and ordered PSK entry exactly, and stops at the first comparison mismatch with reproducible manifest, request, and action-prefix context. Requests are bounded to 160 steps and 1 MiB; canonical response lines are bounded to 16 MiB; aggregate subprocess stdout and stderr are bounded to 64 MiB and 1 MiB respectively and are consumed by bounded reader threads under a corpus deadline. Subprocess use is confined to this external harness; the independent oracle package remains subprocess-free. Nonzero potentially legal specials remain explicit `UnsupportedSliceAction` / `UNSUPPORTED`, while special-ability mechanics, nonempty ledgers, Double continuation, per-special settlement pops, and unstable settlement reconstruction states are not implemented or claimed as covered. The frozen identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Current coverage enforces the closed `schemaVersion`/`actionId`/`kind` Action V1 envelope, the 1,445-way kind-major codec, initial empty occupancy as PSK entry zero, stable NORMAL/PASS and scored-terminal appends, and no synthetic PSK append for empty-ledger settlement. The MVP has no dead-stone negotiation. Future complete tests must arbitrate termination-first versus action-first ordering: immediate administrative termination is valid only at exposed stable boundaries before an action commits, while a committed action’s triggered settlement completes atomically and exposes no internal command boundary. Operational timeouts and cancellation never synthesize game `TIMEOUT`. The early gate compares at least one million reproducible legal and structured-illegal candidate atomic actions with zero reproducible semantic differences before search, product, or training-data production depends on the rules. This rehearsal is not `semantic-projection-v1`, a production protocol, a full reducer or oracle, or evidence for `GATE-RULE-1M` or `GATE-PROD`; a 10,000-candidate run is not the million-action gate.

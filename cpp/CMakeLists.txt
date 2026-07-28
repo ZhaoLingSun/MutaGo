@@ -278,6 +278,9 @@ add_executable(katago
   game/boardhistory.cpp
   game/graphhash.cpp
   game/gameaction.cpp
+  game/positionalsuperko.cpp
+  game/collapsegostate.cpp
+  game/collapsegoreducer.cpp
   game/rulesetidentity.cpp
   dataio/sgf.cpp
   dataio/numpywrite.cpp
@@ -327,6 +330,7 @@ add_executable(katago
   tests/testboardbasic.cpp
   tests/testbook.cpp
   tests/testcollapsecontracts.cpp
+  tests/testcollapsereducer.cpp
   tests/testcommon.cpp
   tests/testconfig.cpp
   tests/testmisc.cpp
@@ -658,4 +662,36 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "C
 endif()
 
 target_include_directories(katago PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+
+# Explicitly test-only, UNFROZEN v0 JSONL probe for the restricted NORMAL/PASS slice.
+# It is standalone and excluded from the default build; it is not a production protocol target.
+add_executable(mutago-collapse-slice-probe EXCLUDE_FROM_ALL
+  core/global.cpp
+  core/bsearch.cpp
+  core/hash.cpp
+  core/md5.cpp
+  core/rand.cpp
+  core/sha2.cpp
+  core/timer.cpp
+  game/board.cpp
+  game/gameaction.cpp
+  game/positionalsuperko.cpp
+  game/collapsegostate.cpp
+  game/collapsegoreducer.cpp
+  game/rulesetidentity.cpp
+  tests/collapsereducerprobe.cpp
+)
+target_include_directories(mutago-collapse-slice-probe PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+if(WIN32)
+  target_compile_definitions(mutago-collapse-slice-probe PRIVATE
+    NOMINMAX
+    BYTE_ORDER=1234
+    LITTLE_ENDIAN=1234
+    BIG_ENDIAN=4321
+  )
+  target_link_libraries(mutago-collapse-slice-probe ws2_32)
+else()
+  find_package(Threads REQUIRED)
+  target_link_libraries(mutago-collapse-slice-probe Threads::Threads)
+endif()
 
