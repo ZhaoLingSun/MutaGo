@@ -1,0 +1,434 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "conformance-fixture-v1.schema.json",
+  "title": "MutaGo Conformance Fixture V1",
+  "description": "Versioned fixture envelope shared by independent implementations. It binds an exact public rules identity, explicit configuration, initial semantic projection, candidate action/resignation/timeout intents, and expected projections.",
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonnegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "asciiId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F]"
+      }
+    },
+    "quotaVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "IMMORTAL",
+        "DOUBLE_START",
+        "EIGHTWAY"
+      ],
+      "properties": {
+        "IMMORTAL": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "DOUBLE_START": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "EIGHTWAY": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    },
+    "playerQuotas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "BLACK",
+        "WHITE"
+      ],
+      "properties": {
+        "BLACK": {
+          "$ref": "#/$defs/quotaVector"
+        },
+        "WHITE": {
+          "$ref": "#/$defs/quotaVector"
+        }
+      }
+    },
+    "ruleConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boardSize",
+        "threshold",
+        "initialActor",
+        "initialPSKSeed",
+        "quotas",
+        "scoring",
+        "komi",
+        "deadStoneShortcut"
+      ],
+      "properties": {
+        "boardSize": {
+          "enum": [
+            9,
+            13,
+            19
+          ]
+        },
+        "threshold": {
+          "enum": [
+            34,
+            70,
+            150
+          ]
+        },
+        "initialActor": {
+          "const": "BLACK"
+        },
+        "initialPSKSeed": {
+          "const": true
+        },
+        "quotas": {
+          "$ref": "#/$defs/playerQuotas"
+        },
+        "scoring": {
+          "const": "CHINESE_AREA"
+        },
+        "komi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "recipient",
+            "numerator",
+            "denominator"
+          ],
+          "properties": {
+            "recipient": {
+              "const": "WHITE"
+            },
+            "numerator": {
+              "const": 15
+            },
+            "denominator": {
+              "const": 2
+            }
+          }
+        },
+        "deadStoneShortcut": {
+          "const": "DEFERRED"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 9
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 34
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 13
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 70
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 19
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 150
+              }
+            }
+          }
+        }
+      ]
+    },
+    "officialConfiguration": {
+      "const": {
+        "boardSize": 19,
+        "threshold": 150,
+        "initialActor": "BLACK",
+        "initialPSKSeed": true,
+        "quotas": {
+          "BLACK": {
+            "IMMORTAL": 1,
+            "DOUBLE_START": 1,
+            "EIGHTWAY": 1
+          },
+          "WHITE": {
+            "IMMORTAL": 1,
+            "DOUBLE_START": 1,
+            "EIGHTWAY": 1
+          }
+        },
+        "scoring": "CHINESE_AREA",
+        "komi": {
+          "recipient": "WHITE",
+          "numerator": 15,
+          "denominator": 2
+        },
+        "deadStoneShortcut": "DEFERRED"
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "generator",
+        "generatorVersion",
+        "seed"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "HAND_AUTHORED",
+            "GENERATED",
+            "MINIMIZED_REGRESSION"
+          ]
+        },
+        "generator": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "generatorVersion": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "seed": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/safeInteger"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "GENERATED",
+                  "MINIMIZED_REGRESSION"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "seed": {
+                "$ref": "#/$defs/safeInteger"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepIndex",
+        "candidateActor",
+        "candidate",
+        "expectedProjection"
+      ],
+      "properties": {
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "candidateActor": {
+          "enum": [
+            "BLACK",
+            "WHITE"
+          ]
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidateIntent"
+        },
+        "expectedProjection": {
+          "$ref": "semantic-projection-v1.schema.json"
+        }
+      }
+    },
+    "candidateIntent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "action"
+          ],
+          "properties": {
+            "kind": {
+              "const": "ACTION"
+            },
+            "action": {
+              "$ref": "action-v1.schema.json"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "RESIGNATION"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "TIMEOUT"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureId",
+    "fixtureClass",
+    "ruleset",
+    "descriptor",
+    "configuration",
+    "provenance",
+    "tags",
+    "initialProjection",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "conformance-fixture-v1"
+    },
+    "fixtureId": {
+      "$ref": "#/$defs/asciiId"
+    },
+    "fixtureClass": {
+      "enum": [
+        "GOLDEN",
+        "REGRESSION",
+        "CONTRACT_EXAMPLE"
+      ]
+    },
+    "ruleset": {
+      "$ref": "ruleset-descriptor-v1.schema.json#/$defs/rulesetIdentity"
+    },
+    "configuration": {
+      "$ref": "#/$defs/ruleConfiguration"
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    },
+    "tags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/asciiId"
+      }
+    },
+    "initialProjection": {
+      "$ref": "semantic-projection-v1.schema.json"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "descriptor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "ruleset-descriptor-v1.schema.json"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "descriptor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "descriptor"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ruleset": {
+            "$ref": "ruleset-descriptor-v1.schema.json#/$defs/publicIdentity"
+          },
+          "configuration": {
+            "$ref": "#/$defs/officialConfiguration"
+          }
+        }
+      }
+    }
+  ]
+}

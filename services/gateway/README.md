@@ -1,6 +1,6 @@
 # Gateway 服务
 
-本目录预留给 MutaGo 的薄 Node 网关。当前只建立职责边界，不包含服务源码、包清单、依赖、生成绑定、进程包装器、模型、数据或部署产物。
+本目录预留给 MutaGo 的薄 Node 网关。M0 只建立并冻结职责与合同边界，不包含 Gateway 服务实现、包清单、依赖、生成绑定、进程包装器、模型、数据或部署产物；这不是对后续获准里程碑源码的永久禁止。
 
 ## 文档状态
 
@@ -8,8 +8,8 @@
 - **FROZEN**：网关只负责进程、会话、WebSocket、成帧、结构校验、流量控制和错误传播，不承担规则语义。
 - **FROZEN**：Collapse Go `0.1.0-draft` 已记载的玩法语义已经冻结；`draft` 不是网关补充或改变规则的授权。
 - **FROZEN**：版本组合为 Model V19、Inputs V9、Training Schema V1、Action Schema V1。
-- **UNFROZEN / unassigned**：公共 `rulesetId` 的最终字面值，以及规范语义描述符的字段、编码和规范化方式。`collapse-go` 目录名仅是候选 slug。
-- **AUDIT-BLOCKED / unassigned**：依赖最终规范字节和独立审计的公开描述符 SHA-256。
+- **FROZEN**：公共身份为 `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；`collapse-go` 目录名只是 slug。
+- **FROZEN**：初始空盘占据是 PSK 历史第零项；MVP 不启用死子协商；Action V1 canonical envelope 恰含 `schemaVersion`、`actionId`、`kind`。
 
 ## 权威边界
 
@@ -19,6 +19,7 @@
 - Python 只能在测试中产生参考预期，不得成为 Node 生产回退、状态修复器或事件生产者。
 - C++ 产生的 JSON 事件序列是权威游戏记录。内存会话、数据库索引、派生快照与扩展 SGF 都不能取得更高权威性。
 - 接受结果、相应权威事件、下一状态和日志位置属于同一语义提交边界；具体持久化事务、ACK 与恢复机制仍为 **UNFROZEN**。
+- 网关必须区分游戏语义 `TIMEOUT` 与请求/传输超时、背压超时、断线和取消；后者不得合成认输或游戏超时。管理终止意图和超时证据只由网关转发并绑定权威修订，最终顺序与接受由 C++ 串行裁决。若动作先提交并触发 settlement，网关不得取消、插入终止、提前 ACK 或发布部分 settlement；待处理终止只能在完整 post-settlement 稳定状态提交后再次裁决。
 
 ## 传输与身份约束
 
@@ -32,11 +33,11 @@
 | `EIGHTWAY` | `1083..1443` |
 | `PASS` | `1444` |
 
-点动作公式为 `a = 361*k + p`。网关不得把相同点上的四种动作折叠为一个裸位置，也不得重新映射 `PASS`。
+点动作公式为 `a = 361*k + p`。网关不得把相同点上的四种动作折叠为一个裸位置，也不得重新映射 `PASS`。Action V1 线格式必须是关闭式对象，恰含 `schemaVersion`、`actionId`、`kind`；坐标由 ID 导出，冗余坐标、未知字段和 kind/ID 不匹配必须拒绝。
 
-涉及规则身份的握手、会话、事件和回放边界必须显式表达其身份状态。公共 `rulesetId`、规范描述符和公开哈希分配前，必须保留明确的 `unassigned`，不得用候选 slug、版本、Git SHA、内容摘要样例或全零值代填。
+涉及规则身份的握手、会话、事件和回放边界必须显式携带并精确匹配 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`。不得用目录 slug、内部 variant、Git SHA、模型 SHA、全零值或其他摘要代填。
 
-消息名称、帧格式、排序、幂等、超时、取消、重试、背压、进程重启、持久化、回放、身份协商与错误码均为 **UNFROZEN**。
+Action V1 envelope 和公开身份已经冻结；其外的消息名称、帧格式、排序、幂等、请求/传输超时、取消、重试、背压、进程重启、持久化、回放、身份协商与错误码仍为 **UNFROZEN**，但不得改变上述管理终止和语义事务顺序。
 
 ## 非目标
 
@@ -67,4 +68,4 @@
 
 ## English Summary
 
-This directory is reserved for a thin Node gateway that manages engine processes, sessions, WebSocket transport, framing, structural validation, backpressure, and error propagation. C++ alone decides production semantics and emits authoritative game events; Node must neither reinterpret them nor use Python as a production fallback. Frozen gameplay and ABI facts must pass through unchanged, including the Action Schema V1 kind-major codec. The public `rulesetId` literal and canonical-descriptor encoding/canonicalization are **UNFROZEN / unassigned**; the final public descriptor SHA-256 is **AUDIT-BLOCKED / unassigned**.
+This directory is reserved for a thin Node gateway that manages engine processes, sessions, WebSocket transport, framing, structural validation, backpressure, and error propagation. C++ alone decides production semantics and emits authoritative game events; Node must neither reinterpret them nor use Python as a production fallback. The frozen identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Action V1 is the closed `schemaVersion`/`actionId`/`kind` envelope. The gateway distinguishes game `TIMEOUT` from transport/request timeouts and cancellation: operational failures never synthesize a game result. C++ serializes administrative termination against action commits; a triggered settlement is never interrupted or partially acknowledged. M0 contains no Gateway service implementation, but later authorized source work is governed by the roadmap and gates.

@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "action-v1.schema.json",
+  "title": "MutaGo Action Schema V1",
+  "description": "Canonical typed action envelope for the fixed 1445-slot kind-major action space. Point coordinates are derived uniquely from actionId; redundant coordinate fields are forbidden.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actionId",
+        "kind"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "action-v1"
+        },
+        "actionId": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "kind": {
+          "const": "NORMAL"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actionId",
+        "kind"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "action-v1"
+        },
+        "actionId": {
+          "type": "integer",
+          "minimum": 361,
+          "maximum": 721
+        },
+        "kind": {
+          "const": "IMMORTAL"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actionId",
+        "kind"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "action-v1"
+        },
+        "actionId": {
+          "type": "integer",
+          "minimum": 722,
+          "maximum": 1082
+        },
+        "kind": {
+          "const": "DOUBLE_START"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actionId",
+        "kind"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "action-v1"
+        },
+        "actionId": {
+          "type": "integer",
+          "minimum": 1083,
+          "maximum": 1443
+        },
+        "kind": {
+          "const": "EIGHTWAY"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actionId",
+        "kind"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "action-v1"
+        },
+        "actionId": {
+          "const": 1444
+        },
+        "kind": {
+          "const": "PASS"
+        }
+      }
+    }
+  ]
+}

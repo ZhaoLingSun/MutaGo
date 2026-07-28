@@ -61,9 +61,11 @@ make -j4
 - 项目治理与设计文档采用完整中文正文，并以 `## English Summary` 结尾。
 - 仓库内链接使用相对路径。
 - 不要因规则文档文件名包含 `draft` 而把已冻结玩法重新描述成未决。
-- `collapse-go` 不是已分配的公共 `rulesetId`；公共 `rulesetId` 与规范语义描述符字段/规范化为 **UNFROZEN / unassigned**，最终公开描述符 SHA-256 为 **AUDIT-BLOCKED / unassigned**。
+- 公开身份已经冻结为 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；`collapse-go` 只是目录 slug。初始空盘占据是 PSK 历史第零项，MVP 不启用死子协商，Action V1 envelope 恰含 `schemaVersion`、`actionId`、`kind`。
+- `tools/contract/contract.py canonicalize` 与 `hash` 只验证受限 JSON profile；`validate ruleset-descriptor-v1` 和 `check` 才执行关闭式 descriptor Schema 及适用的跨字段/跨制品校验。hash 成功不表示输入是有效规则描述符。
+- 历史 bootstrap 的“无源码”边界不适用于后续获准里程碑；当前 M0 可包含合同源码、Schema、工具、向量和测试，但不得扩张成完整规则或产品实现。
 - 不要修改不可变的上游快照 [docs/upstream/KataGo-README-v1.16.5.md](docs/upstream/KataGo-README-v1.16.5.md)。
 
 ## English Summary
 
-[AGENTS.md](AGENTS.md) is the canonical policy; this file is a practical Claude Code entry point. Inspect existing changes, read the relevant frozen design documents, define exact allowed paths, make the smallest scoped change, run the smallest relevant checks before broader tests, and inspect path-scoped diffs. The inherited C++ flow builds from `cpp` with CMake/Make and provides `runtests`, `runoutputtests`, and broader output/search/command wrappers; model-dependent tests may require external assets and must not be reported as passed when not run. Default to no staging, commit, or push. If explicitly requested, stage named paths only and never force-push or rewrite shared history.
+[AGENTS.md](AGENTS.md) is the canonical policy; this file is a practical Claude Code entry point. Inspect existing changes, read the relevant frozen design documents, define exact allowed paths, make the smallest scoped change, run the smallest relevant checks, and inspect path-scoped diffs. The M0 public identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`; initial empty occupancy is PSK entry zero, the MVP has no dead-stone negotiation, and Action V1 is the closed `schemaVersion`/`actionId`/`kind` envelope. `canonicalize` and `hash` enforce only the restricted JSON profile; descriptor `validate` and repository `check` also enforce the descriptor Schema and applicable invariants. Authorized source work is permitted after the historical bootstrap, subject to milestone scope and gates. Default to no staging, commit, or push; if explicitly requested, stage named paths only and never rewrite shared history.

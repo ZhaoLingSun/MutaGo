@@ -38,6 +38,8 @@ int MainCmds::runtests(const vector<string>& args) {
   Base64::runTests();
   ThreadTest::runTests();
 
+  Tests::runCollapseContractTests();
+
   Tests::runBoardIOTests();
   Tests::runBoardBasicTests();
 

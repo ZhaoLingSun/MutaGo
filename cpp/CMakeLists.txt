@@ -243,6 +243,11 @@ endif()
 
 #--------------------------- KATAGO COMPILING AND LINKING --------------------------------------------------------------
 
+set_source_files_properties(
+  tests/testcollapsecontracts.cpp
+  PROPERTIES COMPILE_DEFINITIONS "MUTAGO_REPOSITORY_ROOT=\"${CMAKE_CURRENT_SOURCE_DIR}/..\""
+)
+
 add_executable(katago
   core/global.cpp
   core/base64.cpp
@@ -272,6 +277,8 @@ add_executable(katago
   game/rules.cpp
   game/boardhistory.cpp
   game/graphhash.cpp
+  game/gameaction.cpp
+  game/rulesetidentity.cpp
   dataio/sgf.cpp
   dataio/numpywrite.cpp
   dataio/poswriter.cpp
@@ -319,6 +326,7 @@ add_executable(katago
   tests/testboardarea.cpp
   tests/testboardbasic.cpp
   tests/testbook.cpp
+  tests/testcollapsecontracts.cpp
   tests/testcommon.cpp
   tests/testconfig.cpp
   tests/testmisc.cpp

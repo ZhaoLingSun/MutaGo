@@ -8,9 +8,9 @@
 
 | 字段 | 冻结值 |
 |---|---|
-| 状态 | **FROZEN DESIGN / NOT YET IMPLEMENTED** |
+| 状态 | **FROZEN ABI**；M0 Action/descriptor 合同已实现，Model V19 / Inputs V9 / Training Schema V1 运行时集成尚未完成 |
 | 规则 | **Collapse Go 0.1.0-draft** |
-| 公开规则哈希 | **AUDIT-BLOCKED / unassigned** |
+| 公开规则身份 | `mutago.collapse-go` / `0.1.0-draft` / SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899` |
 | 仓库/上游基线 | KataGo stable **v1.16.5**, SHA `ba938676d7f42d70950b3a535af2466fb642008c` |
 | MutaGo 模型版本 | **MutaGo Model V19** |
 | 神经网络输入版本 | **Inputs V9** |
@@ -21,7 +21,7 @@
 | 全局输入 | `67`，G0–G66 |
 | 扁平动作数 | `1445` |
 
-本文冻结 ABI 设计，不宣称相关代码已经实现，也不分配或暗示任何公开规则哈希。任何实现、模型描述符或发布清单在公开规则哈希正式分配前，必须把该字段保持为 `unassigned`（或语义等价的显式未分配状态），不得自行生成替代值。
+本文冻结 ABI 设计。M0 已实现 Action V1、规则描述符、规范化、向量和合同验证制品，但这不表示 Model V19、Inputs V9、Training Schema V1 或完整规则/训练运行时已经实现。所有相关工件必须精确绑定当前公开三元组，不得省略公开身份、改写为未分配状态，或使用目录 slug、内部 variant、Git SHA 或模型 SHA 代替。
 
 ---
 
@@ -58,7 +58,7 @@ Model V19 继承项目既有 Model V17 架构及后处理语义，除非本文�
 - 普通围棋模式的兼容路由与小棋盘适配器设置；
 - score-belief 奇偶波全局索引 **G18**，即索引 `18`；
 - 规则版本 `Collapse Go 0.1.0-draft`；
-- 公开规则哈希的显式状态 `unassigned`，直至另行分配。
+- 公开规则身份 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`。
 
 ### A.2 玩家与视角
 
@@ -98,7 +98,7 @@ Collapse `GameState` 包含：
 - 内部事务式 settlement；
 - `POST_SETTLEMENT`。
 
-内部 settlement 期间禁止神经网络求值。部分 settlement 状态没有 policy 行、搜索节点或神经网络 phase bit。
+内部 settlement 期间禁止神经网络求值。部分 settlement 状态没有 policy 行、搜索节点或神经网络 phase bit。settlement 从触发原子动作提交后到出口状态共同提交前不暴露认输、游戏超时、取消或其他命令边界；管理终止只在暴露的 pre/post-settlement 稳定决策状态接受。
 
 每个非终局 Collapse 决策状态中，pre-settlement 与 post-settlement 必须恰有一个为真。
 
@@ -146,6 +146,7 @@ Collapse-only 状态使用显式 `LegacyV7View`：
 必须严格区分 **V7 recent-board 历史** 与 **官方 Collapse positional-superko 历史**：
 
 - 官方 Collapse Go 采用只看黑白占位、不包含下一手玩家的 **occupancy-only positional superko（PSK）**。
+- 初始化时，初始空盘占据是 PSK 历史第零项，并且在任何规则事件前是历史中唯一条目。
 - 对不触发 settlement 的合法原子动作，在该动作及其直接自动提子达到稳定闭包后，把稳定黑白占位加入 PSK 历史。
 - 若原子动作触发 settlement，则动作本身达到稳定闭包后的占位按正常动作历史规则加入 PSK；随后，**每弹出一个特殊事件并完成该次能力移除、重建及提子的稳定闭包后，都必须再次把该稳定黑白占位追加到 PSK 历史**。
 - tombstone pop 即使不改变棋盘，也仍完成一次 pop，并追加其稳定占位；重复历史条目是允许的。
@@ -469,11 +470,11 @@ a_{\text{pass}}=1444.
 
 因此固定 kind-major 动作顺序为 **NORMAL、IMMORTAL、DOUBLE_START、EIGHTWAY、PASS**，动作 ID 总数固定为 **1445**。
 
-较小棋盘不得定义任何紧凑替代整数 ABI。对语义 `N×N` 棋盘，必须先使用 `(X,Y)=C_N(x,y)` 映射到居中的 19×19 画布，再使用本节冻结的 `a(k,X,Y)=361k+(19Y+X)`；`PASS` 始终为 `1444`。协议可以使用 typed action `{kind,loc}`，但任何 Action Schema V1 整数 ID、日志 ID、训练 ID 或客户端映射都不得采用基于 `N²` 的局部编号或其他替代编号。canvas-to-semantic 转换必须拒绝 S0 之外的非 PASS 点。
+较小棋盘不得定义任何紧凑替代整数 ABI。对语义 `N×N` 棋盘，必须先使用 `(X,Y)=C_N(x,y)` 映射到居中的 19×19 画布，再使用本节冻结的 `a(k,X,Y)=361k+(19Y+X)`；`PASS` 始终为 `1444`。Action V1 canonical wire envelope 恰含 `schemaVersion`、`actionId`、`kind`；坐标由 `actionId` 唯一导出，冗余坐标和未知字段拒绝。内部实现可以使用 `Action{kind,loc}` 之类的语义类型，但不得将其作为 Action V1 线格式。任何 Action Schema V1 ID、日志 ID、训练 ID 或客户端映射都不得采用基于 `N²` 的局部编号或其他替代编号。canvas-to-semantic 转换必须拒绝 S0 之外的非 PASS 点。
 
 ### D.2 Typed action 身份
 
-一步棋是 `Action{kind,loc}` 或其规范整数 action ID。裸 Go `Loc` 不足以标识动作。
+内部一步棋可以表示为 `Action{kind,loc}`，规范整数身份是 action ID；对外 canonical Action V1 对象固定为 `{schemaVersion, actionId, kind}`。裸 Go `Loc`、`{kind,loc}` 或仅 action ID 都不足以单独充当规范 wire envelope。
 
 下列位置必须使用 typed action identity：
 
@@ -932,7 +933,7 @@ Search edges 存储 typed actions，而非仅存 locations。
 Replay 应在张量外保留：
 
 - board size 与 rule version；
-- public rules hash 字段，其当前规范值为 `unassigned`；
+- 完整公开规则身份三元组，其当前规范值为 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；
 - 精确 threshold 与 quotas；
 - absolute next actor；
 - 每个 atomic typed action；
@@ -987,13 +988,13 @@ z_{\text{ext}}
 - Immortal、Double、Eightway 分支初始化为精确零；
 - 普通路由先保持旧 362-element normalization 与 postprocessing order，再把结果 scatter 到 1445-way API。
 
-对每个 Q 子头：
+Model V19 的每个 Q 子头都作为新分支处理：
 
-- 旧 point/pass predictions 复制到 NORMAL/PASS；
-- 特殊动作族 Q 输出初始化为零；
+- 已选 Debug/Base/Large donor 均不含逐动作 Q 参数，不能把 legacy policy 或其他输出重解释、复制或 remap 为 Q；
+- `NORMAL`、`PASS` 与三个特殊动作族的全部 Q 参数及对应状态初始化为精确零；
 - Q predictions 与 policy logits 保持分离。
 
-Model V16 或已配置 Model V17 的 Q channels 必须被分类为 Q outputs，而非 policy logits。Model V18 保留且未发布；本 ABI 的目标模型版本是 Model V19。
+若未来改选实际包含 Q 的 donor，必须先建立新的逐张量来源审计、语义分类和 migration manifest；Model V16 或已配置 Model V17 的 Q channels 只能分类为 Q outputs，而非 policy logits。Model V18 保留且未发布；本 ABI 的目标模型版本是 Model V19。
 
 ### H.3 输入与训练状态迁移
 
@@ -1001,18 +1002,16 @@ migrator 必须确定性执行，且不得使用现有会添加噪声的 channel
 
 它必须：
 
-- 逐 bit 复制保留的 raw-model parameters；
-- 将新 parameters 初始化为精确零；
-- 逐 bit 复制保留的 EMA/SWA parameters；
-- 将新 EMA/SWA parameters 初始化为零；
-- 保留 `n_averaged`；
-- 精确复制保留的 optimizer momentum/moment/state buffers；
-- 将新 parameters 的 optimizer state 初始化为零；
-- 保留 scalar optimizer step counters 与 parameter-group hyperparameters；
+- 只有 donor 工件中实际存在、来源已审计且语义兼容的 raw-model parameters 才逐 bit 复制；
+- 将缺失或新增的 parameters 初始化为精确零；
+- 只有 donor 实际携带且 manifest 证明兼容的 EMA/SWA parameters 才逐 bit 复制；缺失或新增的 EMA/SWA parameters 初始化为零；
+- 只有在 donor 实际携带时才保留 `n_averaged`，否则显式建立零初始化的新平均状态；
+- 只有 donor 实际携带且 manifest 证明兼容的 optimizer momentum/moment/state buffers、scalar step counters 与 parameter-group hyperparameters 才精确复制；
+- 将缺失状态及新增 parameters 的 optimizer state 初始化为零；公开 Debug/Base/Large donor 不提供可直接 exact-copy 的 PyTorch optimizer；
 - 更新嵌入的 Model V19、Inputs V9、Action Schema V1 描述符版本；
-- 保留全部无关 train state。
+- 保留 donor 中实际存在且语义兼容的无关 train state，不得伪造缺失状态。
 
-禁止随机扰动，也禁止静默删除 optimizer 或 SWA state。
+禁止随机扰动，也禁止静默删除 donor 实际包含且已分类的 optimizer、SWA 或其他 train state；同样禁止把不存在的状态宣称为已复制。
 
 ### H.4 G18 依赖
 
@@ -1147,8 +1146,8 @@ Exact-mask V1 training 不同于上游 KataGo training；后者在 policy loss �
 54. Search edges 区分同一点上的全部四种 action kind。
 55. 每个实现路径的 score-belief 精确读取 **G18**，即 `input_global[:,18:19]`，绝不读取 G66 或“最后一个全局通道”。
 56. 普通兼容测试在 scatter 前保留完整 legacy 362-action postprocessing order。
-57. 新 raw、EMA/SWA 与 optimizer parameters 初始化为精确零，且不扰动保留状态。
-58. 文档与描述符中的公开规则哈希保持 `unassigned`，直至通过独立版本决策正式分配；本 ABI 文档本身不构成哈希分配或实现完成声明。
+57. 只有 donor 实际携带、已审计且语义兼容的 raw、EMA/SWA、optimizer 与 train state 才复制；缺失和新增参数/状态初始化为精确零，且不扰动保留状态。
+58. 文档、描述符、Replay 和模型工件中的公开规则身份精确匹配 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；不得回退为未分配状态，也不得把该身份误写成完整运行时实现完成声明。
 
 ---
 
@@ -1178,14 +1177,14 @@ Exact-mask V1 training 不同于上游 KataGo training；后者在 policy loss �
 - [`python/migrate_expand_channels.py`](../../python/migrate_expand_channels.py)
 - [`docs/upstream/KataGo-README-v1.16.5.md`](../upstream/KataGo-README-v1.16.5.md)
 
-基线代码目前仍实现 Inputs V7 的 22 个空间通道、19 个全局通道以及 362-way 普通动作接口；本文状态因此是 **FROZEN DESIGN / NOT YET IMPLEMENTED**。特别地，基线 score-belief 代码可因 G18 恰为 V7 最后一个全局通道而使用 last-channel slice；迁移到 V9 时必须改为显式 G18 slice `input_global[:,18:19]`。
+基线神经与训练代码目前仍实现 Inputs V7 的 22 个空间通道、19 个全局通道以及 362-way 普通动作接口，因此 Model V19 / Inputs V9 / Training Schema V1 的运行时集成尚未完成；这不否定 M0 已存在的 Action/descriptor Schema、向量、工具和合同源码。特别地，基线 score-belief 代码可因 G18 恰为 V7 最后一个全局通道而使用 last-channel slice；迁移到 V9 时必须改为显式 G18 slice `input_global[:,18:19]`。
 
 ---
 
 ## English Summary
 
-This document freezes the design of **MutaGo Model V19**, **Inputs V9**, **Training Schema V1**, and **Action Schema V1** for **Collapse Go 0.1.0-draft**. Its implementation status is **FROZEN DESIGN / NOT YET IMPLEMENTED**. The pinned repository/upstream baseline is KataGo stable v1.16.5 at `ba938676d7f42d70950b3a535af2466fb642008c`; Model V18 is reserved and unpublished, and assignment of the final public rules digest remains **AUDIT-BLOCKED / unassigned**.
+This document freezes **MutaGo Model V19**, **Inputs V9**, **Training Schema V1**, and **Action Schema V1** for **Collapse Go 0.1.0-draft**. M0 Action/descriptor schemas, vectors, validation tooling, and contract source exist; the Model V19, Inputs V9, and Training Schema V1 runtime integration is not yet complete. The frozen public identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Model V18 remains reserved and unpublished.
 
-The neural ABI is exactly 38 spatial channels (S0–S37), 67 global channels (G0–G66), and a centered 19×19 canvas. The action ABI is exactly 1445 kind-major IDs ordered NORMAL, IMMORTAL, DOUBLE_START, EIGHTWAY, then PASS at ID 1444. Policy and Q tensors are separate, legality is supplied by an authoritative `[B,1445]` mask, and every score-belief path must explicitly read G18 via `input_global[:,18:19]`.
+The neural ABI is exactly 38 spatial channels (S0–S37), 67 global channels (G0–G66), and a centered 19×19 canvas. The action ABI is exactly 1445 kind-major IDs ordered NORMAL, IMMORTAL, DOUBLE_START, EIGHTWAY, then PASS at ID 1444. Canonical Action V1 is the closed `schemaVersion`/`actionId`/`kind` wire envelope; coordinates are derived and redundant fields are rejected. Policy and Q tensors are separate, legality is supplied by an authoritative `[B,1445]` mask, and every score-belief path must explicitly read G18 via `input_global[:,18:19]`.
 
-Official Collapse Go uses occupancy-only positional superko. Settlement is transactional and exposes no player decision or neural node, but every special-event pop appends its stable post-closure black/white occupancy to positional-superko history. Settlement-generated repetitions are automatically allowed and constrain future player actions; unstable rebuild/capture intermediates are not history states. `DOUBLE_START` is legal only when `A+2<=T`: at `A=T-2`, the start and continuation complete actions `T-1` and `T`, while starting at `A=T-1` is illegal. A Normal continuation performs the full placement/capture/survival/PSK transaction; a Pass continuation performs none of those board-legality operations but still updates counters, emits its event, clears pending Double, appends unchanged occupancy, and hands play to the opponent; that opponent remains `handoffActor` if settlement follows. Smaller boards always map through the centered 19×19 canvas before using the fixed 1445-way IDs; compact `a_N`/`PASS_N` alternatives are forbidden.
+Official Collapse Go uses occupancy-only positional superko with initial empty occupancy as history entry zero. Settlement is transactional and exposes no player, neural, administrative-termination, or cancellation boundary, but every special-event pop appends its stable post-closure occupancy. Settlement-generated repetitions are allowed and constrain future actions; unstable intermediates are excluded. Administrative termination can be accepted only at an exposed pre/post-settlement stable decision state before a candidate action commits; once an action commits, any triggered settlement completes atomically. `DOUBLE_START` is legal only when `A+2<=T`: at `A=T-2`, the start and continuation complete actions `T-1` and `T`, while starting at `A=T-1` is illegal. A Normal continuation performs the full placement/capture/survival/PSK transaction; a Pass continuation performs none of those board-legality operations but still updates counters, emits its event, clears pending Double, appends unchanged occupancy, and hands play to the opponent. Smaller boards always map through the centered 19×19 canvas before using the fixed 1445-way IDs; compact alternatives are forbidden.

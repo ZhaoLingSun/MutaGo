@@ -8,8 +8,7 @@
 - **FROZEN**：客户端只负责用户交互与权威状态的呈现，不承担任何游戏规则裁决。
 - **FROZEN**：Collapse Go `0.1.0-draft` 中已经写明的玩法语义是冻结语义；版本名中的 `draft` 不表示客户端可以自行补充或改变规则。
 - **FROZEN**：模型与数据 ABI 版本为 Model V19、Inputs V9、Training Schema V1、Action Schema V1。
-- **UNFROZEN / unassigned**：公共 `rulesetId` 的最终字面值，以及规范语义描述符的字段、编码和规范化方式。目录名 `collapse-go` 只是候选 slug，不是已分配的公共 `rulesetId`。
-- **AUDIT-BLOCKED / unassigned**：依赖最终规范字节和独立审计的公开描述符 SHA-256。
+- **FROZEN**：公共规则身份为 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；规范描述符采用 `rfc8785-jcs-ascii-safe-integer-v1`，长度为 14,973 个规范 UTF-8 字节。目录名 `collapse-go` 仍只是仓库 slug，不是公共 `rulesetId`。
 
 ## 权威边界
 
@@ -22,7 +21,7 @@
 
 ## 接口约束
 
-客户端未来可以发送建局、动作、回放、重连和终止等意图。若协议暴露整数动作 ID，必须原样使用 Action Schema V1 的 kind-major 编码，不得在前端重新编号：
+客户端未来可以发送建局、动作、回放、重连和终止等意图。每个规范动作意图必须携带完整关闭式 Action V1 envelope，且恰含 `schemaVersion`、`actionId`、`kind`；坐标由 `actionId` 导出，缺字段、冗余坐标、未知字段或 `kind`/ID 不匹配必须失败关闭。`actionId` 原样使用 kind-major 编码，不得在前端重新编号：
 
 - `NORMAL`：`0..360`
 - `IMMORTAL`：`361..721`
@@ -32,9 +31,9 @@
 
 点动作满足 `a = 361*k + p`。动作是否可用必须由 C++ 权威状态决定；按钮禁用、候选提示或预测结果只能视为呈现信息。
 
-规则身份字段必须端到端无损转发。在公共身份尚未分配期间，客户端必须显示或保留明确的 `unassigned` 状态，不得把目录名、Git SHA、全零摘要或示例值伪装成公共身份。
+规则身份字段必须端到端无损转发并与权威会话绑定。客户端必须拒绝未知或不匹配的三元组，不得把目录名、Git SHA、全零摘要、模型摘要或示例值伪装成公共身份，也不得用本地默认值替换 C++ 返回的身份。
 
-消息名、字段布局、WebSocket 帧、重连策略、缓存、状态管理、页面结构、无障碍要求和部署方式均为 **UNFROZEN**。
+包裹 Action V1 的产品/WebSocket 消息名、外层字段布局、帧、重连策略、缓存、状态管理、页面结构、无障碍要求和部署方式均为 **UNFROZEN**；这不重新开放其内部 Action V1 payload，后者固定且仅含 `schemaVersion`、`actionId`、`kind`。
 
 ## 非目标
 
@@ -50,7 +49,7 @@
 1. 版本化客户端协议、错误模型与兼容政策已经明确；
 2. 网关的排序、回放、重连、背压和失败语义已经明确；
 3. 具有由 C++ 权威实现产生的确定性事件与快照夹具；
-4. 能验证身份未分配、身份不匹配、拒绝动作、断线和终局等界面状态；
+4. 能验证身份匹配、未知身份、身份不匹配、拒绝动作、断线和终局等界面状态；
 5. React、TypeScript、浏览器工具链及新增依赖完成许可证、来源、安全与再分发审计。
 
 ## 相关文档
@@ -64,4 +63,4 @@
 
 ## English Summary
 
-This directory is reserved for the future React and TypeScript client. The browser only sends user intent and renders events and derived views forwarded from the sole production authority, the C++ engine; it never decides rules or emits authoritative game events. Collapse Go gameplay semantics documented for `0.1.0-draft` are frozen despite the draft label. Model V19, Inputs V9, Training Schema V1, and Action Schema V1 are fixed. The public `rulesetId` literal and canonical-descriptor encoding/canonicalization are **UNFROZEN / unassigned**, while the final public descriptor SHA-256 is **AUDIT-BLOCKED / unassigned**. Any exposed action IDs must preserve the kind-major `0..1444` codec exactly.
+This directory is reserved for the future React and TypeScript client. The browser only sends user intent and renders events and derived views forwarded from the sole production authority, the C++ engine; it never decides rules or emits authoritative game events. Model V19, Inputs V9, Training Schema V1, and Action Schema V1 are fixed. Every canonical action payload is the closed `{schemaVersion, actionId, kind}` envelope; only its surrounding product/WebSocket envelope remains unfrozen. The assigned public identity is `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`; the restricted-JCS descriptor is 14,973 canonical UTF-8 bytes. The client must preserve this identity and the kind-major `0..1444` action codec exactly, reject missing/redundant/unknown action fields and unknown or mismatched identities, and never substitute a slug, Git SHA, model digest, or local default.

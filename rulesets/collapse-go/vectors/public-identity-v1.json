@@ -1,0 +1,11 @@
+{
+  "vectorVersion": "public-identity-v1",
+  "descriptorFile": "../descriptor-v0.1.0-draft.json",
+  "canonicalizationProfile": "rfc8785-jcs-ascii-safe-integer-v1",
+  "canonicalUtf8ByteLength": 14973,
+  "publicIdentity": {
+    "rulesetId": "mutago.collapse-go",
+    "semanticVersion": "0.1.0-draft",
+    "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+  }
+}

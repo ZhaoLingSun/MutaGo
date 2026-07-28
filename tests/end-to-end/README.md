@@ -7,8 +7,7 @@
 - **FROZEN**：固定上游基线为 KataGo stable v1.16.5，提交 `ba938676d7f42d70950b3a535af2466fb642008c`。
 - **FROZEN**：Collapse Go `0.1.0-draft` 已写明的玩法语义已经冻结；端到端测试只验证生产链路是否保真，不重新定义规则。
 - **FROZEN**：版本组合为 Model V19、Inputs V9、Training Schema V1、Action Schema V1。
-- **UNFROZEN / unassigned**：公共 `rulesetId` 的最终字面值，以及规范语义描述符的字段、编码和规范化方式；所有跨组件场景必须保留明确的未分配状态。
-- **AUDIT-BLOCKED / unassigned**：依赖最终规范字节和独立审计的公开描述符 SHA-256。
+- **FROZEN**：公共规则身份为 `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`；规范描述符采用 `rfc8785-jcs-ascii-safe-integer-v1`，长度为 14,973 个规范 UTF-8 字节。
 
 ## 权威边界
 
@@ -22,7 +21,7 @@
 
 ### 动作与版本保真
 
-生产链路必须逐跳保持 Model V19、Inputs V9、Training Schema V1 和 Action Schema V1 的版本信息。若协议传输整数动作 ID，必须原样保持 kind-major 编码：
+生产链路必须逐跳保持 Model V19、Inputs V9、Training Schema V1 和 Action Schema V1 的版本信息。每个规范动作提交都必须逐跳携带完整关闭式 Action V1 envelope，且恰含 `schemaVersion`、`actionId`、`kind`。测试必须拒绝缺字段、冗余坐标、未知字段、未知 schema 版本、未知 kind 以及 kind/ID 不匹配，并原样保持下列 kind-major `actionId`：
 
 | 动作 | ID 范围 |
 |---|---:|
@@ -32,11 +31,11 @@
 | `EIGHTWAY` | `1083..1443` |
 | `PASS` | `1444` |
 
-点动作满足 `a = 361*k + p`。测试应证明 Web 和 Gateway 不把 typed action 降级为裸位置、不重新编号动作族，也不在拒绝后伪造权威事件。
+点动作满足 `a = 361*k + p`，坐标只能由 `actionId` 导出。测试应证明 Web 和 Gateway 不把 envelope 降级为裸 ID、裸位置或 `{kind,loc}`，不重新编号动作族，也不在拒绝后伪造权威事件。
 
 ### 身份与回放
 
-在公共身份分配前，每个相关握手、会话、事件和回放场景都必须保留 `unassigned` 状态。测试必须拒绝把候选 slug `collapse-go`、Git SHA、全零摘要或示例值冒充公共 `rulesetId`、规范描述符或规则哈希。
+所有相关握手、会话、事件和回放场景都必须逐跳保持完整公共身份三元组。测试必须接受精确匹配的已分配身份，并拒绝未知或不匹配的 `rulesetId`、语义版本、描述符摘要，以及把目录 slug `collapse-go`、Git SHA、全零摘要、模型摘要或示例值冒充公共身份的情况。
 
 回放测试必须从 C++ 权威 JSON 事件记录恢复派生状态，并验证事件排序、日志位置、身份状态和重连结果。扩展 SGF 只验证已声明的交换行为与损失模型，不承担权威恢复。
 
@@ -51,7 +50,7 @@
 - 建立会话、提交合法动作、提交拒绝动作和正常终局；
 - `DOUBLE_START` 与 continuation 的同一行动方流程；
 - settlement 前后事件、派生状态与界面呈现；
-- 身份未分配和身份不匹配；
+- 精确公共身份、未知身份和身份不匹配；
 - 断线重连、Gateway 重启、C++ 进程故障、背压和超时；
 - 权威事件日志回放及确定性派生；
 - 多会话隔离、资源清理和错误脱敏。
@@ -89,4 +88,4 @@
 
 ## English Summary
 
-End-to-end tests cover the black-box production path from React through WebSocket and the thin Node gateway to the authoritative C++ engine. C++ alone emits authoritative game events; Python is excluded from this path and belongs to conformance testing. Tests must preserve the fixed Model V19, Inputs V9, Training Schema V1, and kind-major Action Schema V1 identifiers, including PASS at 1444. They also verify that the public `rulesetId` and descriptor canonicalization remain **UNFROZEN / unassigned**, the final descriptor SHA-256 remains **AUDIT-BLOCKED / unassigned**, authoritative JSON replay is preserved, and any exposed stable-settlement information is transported losslessly without recomputing rules in the browser or gateway.
+End-to-end tests cover the black-box production path from React through WebSocket and the thin Node gateway to the authoritative C++ engine. C++ alone emits authoritative game events; Python is excluded from this path and belongs to conformance testing. Tests must preserve Model V19, Inputs V9, Training Schema V1, and every closed Action V1 `{schemaVersion, actionId, kind}` envelope, including the kind-major codec and PASS at 1444; missing, redundant, unknown, version-mismatched, or kind/ID-inconsistent fields fail closed. They also preserve the exact public identity `mutago.collapse-go` / `0.1.0-draft` / `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`, reject unknown or mismatched identities, preserve authoritative JSON replay, and transport any exposed stable-settlement information losslessly without recomputing rules in the browser or gateway.

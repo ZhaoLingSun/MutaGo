@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "semantic-projection-v1",
+  "ruleset": {
+    "rulesetId": "mutago.collapse-go",
+    "semanticVersion": "0.1.0-draft",
+    "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+  },
+  "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+  "fixtureId": "contract-empty-two-pass",
+  "stepIndex": 0,
+  "transition": null,
+  "state": {
+    "revision": 0,
+    "logPosition": 0,
+    "boardSize": 19,
+    "threshold": 150,
+    "occupancy": {
+      "black": [],
+      "white": []
+    },
+    "stones": [],
+    "actor": "BLACK",
+    "phase": "COLLAPSE_PLAY",
+    "atomicActionCount": 0,
+    "consecutivePasses": 0,
+    "settlementCompleted": false,
+    "pendingDouble": null,
+    "initialQuotas": {
+      "BLACK": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      },
+      "WHITE": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      }
+    },
+    "remainingQuotas": {
+      "BLACK": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      },
+      "WHITE": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      }
+    },
+    "usedQuotas": {
+      "BLACK": {
+        "IMMORTAL": 0,
+        "DOUBLE_START": 0,
+        "EIGHTWAY": 0
+      },
+      "WHITE": {
+        "IMMORTAL": 0,
+        "DOUBLE_START": 0,
+        "EIGHTWAY": 0
+      }
+    },
+    "expiredQuotas": {
+      "BLACK": {
+        "IMMORTAL": 0,
+        "DOUBLE_START": 0,
+        "EIGHTWAY": 0
+      },
+      "WHITE": {
+        "IMMORTAL": 0,
+        "DOUBLE_START": 0,
+        "EIGHTWAY": 0
+      }
+    },
+    "ledger": [],
+    "pskHistory": [
+      {
+        "black": [],
+        "white": []
+      }
+    ],
+    "terminal": {
+      "ended": false
+    }
+  },
+  "derived": {
+    "legalActionRanges": [
+      {
+        "first": 0,
+        "last": 1444
+      }
+    ]
+  },
+  "debug": {
+    "groups": []
+  }
+}

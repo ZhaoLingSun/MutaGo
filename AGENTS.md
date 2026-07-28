@@ -6,7 +6,7 @@
 
 - **FROZEN：** 本文件是仓库级代理政策的规范来源。[CLAUDE.md](CLAUDE.md) 只提供实用入口，不得放宽或替代本文件。
 - **FROZEN：** [设计文档索引](docs/设计文档/README.md)列出设计决定及其状态；[坍缩围棋规则](docs/设计文档/02-坍缩围棋规则-v0.1.0-draft.md)是玩法语义的规范来源；[输入特征 ABI](docs/设计文档/04-输入特征ABI-V9.md)和[测试与一致性门槛](docs/设计文档/06-测试与一致性门槛.md)分别约束 ABI 与验收顺序。
-- **FROZEN：** 规则文件名中的 `draft` 不表示已列出的玩法语义仍可自由修改。那些玩法语义已经冻结；真正未决的身份、编码、协议和初始 PSK 播种事项必须明确标为 **UNFROZEN**。
+- **FROZEN：** 规则文件名中的 `draft` 不表示已列出的玩法语义仍可自由修改。玩法语义、M0 公开身份、初始 PSK 播种、Action V1 envelope 与 MVP 死子策略已经冻结；真正未决的生产协议、物理编码、持久化和后续产品事项必须明确标为 **UNFROZEN**。
 - 子目录未来可以添加更严格的 `AGENTS.md`，但不能放宽这里的权威边界、测试门槛、Git 安全纪律、上游保留或法律义务。
 - 如普通说明与明确标记为 **FROZEN** 的决定冲突，以冻结决定和更具体但不放宽约束的政策为准。
 
@@ -23,12 +23,11 @@
 - **FROZEN：** MutaGo 从 KataGo stable `v1.16.5`、提交 `ba938676d7f42d70950b3a535af2466fb642008c` 的完整树与完整 Git 历史开始分化。
 - **FROZEN：** 首个规则集是 Collapse Go / 坍缩围棋，规范规则文档版本为 `0.1.0-draft`，其中列出的玩法语义已经冻结。
 - **FROZEN：** Model V19、Inputs V9、Training Schema V1、Action Schema V1。
-- **UNFROZEN：** 公开 `rulesetId` 字面值、规范语义描述符的字段和规范化规则，以及初始空盘是否预先加入 PSK 历史。
-- **AUDIT-BLOCKED：** 公开描述符 SHA-256；在最终描述符字节冻结并完成独立审计前保持未分配。
-- `collapse-go` 只是仓库目录 slug 和候选名称，不是已分配的公开 `rulesetId`。
-- **AUDIT-BLOCKED：** 在实现、测试、来源和许可证证据齐备前，任何正式发布、模型或数据分发，以及“规则实现完成”“兼容完成”或“门槛已通过”的声明。
+- **FROZEN：** 公开 `rulesetId` 为 `mutago.collapse-go`；规范语义描述符为 `rulesets/collapse-go/descriptor-v0.1.0-draft.json`，规范化 profile 为 `rfc8785-jcs-ascii-safe-integer-v1`，当前公开 lowercase SHA-256 为 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`。`collapse-go` 仍只是仓库目录 slug，不是公开 `rulesetId` 的别名。
+- **FROZEN：** 初始空盘占据是有序 PSK 历史第零项；MVP 不启用协商死子移除或争议恢复协议；Action V1 canonical wire envelope 恰含 `schemaVersion`、`actionId`、`kind`。
+- **AUDIT-BLOCKED：** 在完整规则实现、测试、来源和许可证证据齐备前，任何正式发布、模型或数据分发，以及“规则实现完成”“兼容完成”或“门槛已通过”的声明。
 
-当前启动工作只建立文档和仓库边界脚手架。不得借该范围夹带生产源码、包清单、依赖、schema 生成器、CI、模型、检查点、数据、构建产物、发布标签、release 或最终公开规则哈希。
+历史 bootstrap 首提交只建立文档和仓库边界脚手架。该历史边界不再禁止后续获准的源码工作：当前 M0 可以包含规范描述符、源 Schema、规范化/校验工具、C++ 合同类型、向量、示例和合同测试；M0 仍不得夹带完整规则 reducer、完整 Python oracle、搜索、神经网络、Gateway/Web 产品实现、模型、数据、发布标签或 release。后续里程碑的源码实现必须遵守路线顺序和相应门槛。
 
 ## 4. 生产权威边界
 
@@ -71,6 +70,8 @@
 - `EIGHTWAY`：`1083..1443`；
 - `PASS`：`1444`。
 
+Action V1 的 canonical wire envelope **恰好**包含 `schemaVersion`、`actionId` 和 `kind`。坐标只能由 `actionId` 导出；冗余坐标、未知字段、错误 `kind`/ID 组合和未知 schema 版本必须 fail closed。内部语义类型可以持有坐标，但不得把 `{kind,loc}` 或裸位置冒充 Action V1 线格式。
+
 任何语言、schema、日志、模型输入管线、数据生成器或客户端映射都不得改用 point-major 或另一套编号。未知动作种类或 schema 版本必须 fail closed。
 
 ### 5.2 仅占子的 positional superko
@@ -81,8 +82,15 @@
 - 结算按全局从新到旧顺序每次弹出一个特殊事件；在能力移除、全盘重建、提子和确定性闭包完成后，追加该次稳定占位。
 - tombstone/no-op 事件仍须保持可审计，并追加其稳定占位。
 - 不稳定的重建或提子中间盘面不得进入 PSK 历史。
-- **UNFROZEN：** 初始空盘是否预先写入 PSK 历史。任何实现或 fixture 都不得猜测该决定。
-- PSK 的字段语义已经冻结；具体编码、哈希算法和存储布局仍可由后续设计决定，不得把“编码未定”误写成“PSK 包含哪些语义字段未定”。
+- **FROZEN：** 初始空盘占据在任何规则事件前预先写入有序 PSK 历史，索引固定为 `0`，初始化时它是唯一条目。
+- PSK 的字段语义和初始播种已经冻结；具体编码、哈希算法和存储布局仍可由后续设计决定，不得把“编码未定”误写成“PSK 包含哪些语义字段或是否播种未定”。
+
+### 5.3 管理终止与事务闭包
+
+- **FROZEN：** 认输和游戏语义超时只在对外暴露的稳定命令/决策边界接受：`COLLAPSE_PLAY`（包括 `pendingDouble` 续着边界）或 `ORDINARY_PLAY`。
+- 若管理终止在候选原子动作提交前由 C++ 权威顺序接受，则立即提交终局，不提交该候选动作，不运行 settlement 或面积计分，也不增加原子动作数。
+- 原子动作一旦提交，其触发的 settlement 必须完整、原子地运行到出口；从触发动作提交点到 settlement 出口之间不暴露认输、超时、取消或其他命令边界。稍后到达的管理终止只能在新的稳定决策状态暴露后再由 C++ 裁决。
+- 请求/传输超时、背压、断线、取消和进程故障不是游戏语义 `TIMEOUT`，不得自动合成终局或胜负。
 
 ## 6. 记录、公共身份与键空间必须分离
 
@@ -97,7 +105,7 @@
 
 必须严格区分以下四个域，分别命名、类型化、版本化和测试：
 
-1. **公开规则身份**：冻结的结构为 `rulesetId + semantic version + SHA-256(canonical semantic descriptor)`；`rulesetId` 最终字面值与描述符字段/规范化为 **UNFROZEN / unassigned**，最终公开描述符 SHA-256 为 **AUDIT-BLOCKED / unassigned**。
+1. **公开规则身份**：冻结为 `mutago.collapse-go + 0.1.0-draft + SHA-256(canonical semantic descriptor)`；规范描述符路径、受限 JCS profile 和当前公开摘要 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899` 均已由 M0 描述符与 identity vector 固定。
 2. **`PositionalSuperkoKey`**：只表达黑白占位，用于重复局面合法性；不能包含行动者或规则元数据。其二进制编码、哈希、碰撞处理和存储布局尚未冻结。
 3. **`SearchKey`**：用于搜索节点复用，必须覆盖所有会改变搜索语义的状态；必需语义字段已由[输入特征 ABI](docs/设计文档/04-输入特征ABI-V9.md) §G.3 冻结，物理字节编码、digest/碰撞实现、生命周期、存储布局和上游集成仍待实现决策与审计。
 4. **`NNCacheKey`**：用于神经网络结果缓存，必须与具体模型/checkpoint、Inputs V9、对称变换及影响网络输入或后处理的配置保持正确关联；必需语义字段已由[输入特征 ABI](docs/设计文档/04-输入特征ABI-V9.md) §G.4 冻结，缓存层级、物理编码、digest/碰撞实现、淘汰/生命周期、存储布局和上游集成仍未冻结。
@@ -114,8 +122,9 @@
 4. schema 源与受影响的生成输出必须在同一变更中更新和验证，不能只提交一侧。
 5. 如果任务要求暂存，必须用明确列出的路径同时暂存 schema 源和对应生成物；禁止宽泛暂存。
 6. 尚未存在或尚未冻结的生成器、schema 字段和规范化规则不得由代理自行发明。
+7. `tools/contract/contract.py canonicalize` 与 `hash` 只校验受限 JSON profile；descriptor `validate` 与 repository `check` 才校验关闭式 Schema、描述符不变量和适用的跨制品绑定。hash 成功不得被写成 descriptor 有效性证明。
 
-当前文档启动任务不新增 package manifest、依赖或 schema 生成器。
+当前 M0 可以新增和维护声明为权威来源的 Schema、合同工具、向量、示例及对应源码/测试，但不新增未经授权的 package manifest、全局依赖或反向覆盖手写 Schema 的生成器。
 
 ## 8. 测试门槛与顺序
 
@@ -138,7 +147,7 @@
 - 每个原子动作和结算步骤的 undo/redo，要求状态、历史、四个身份/键域及权威事件精确恢复；
 - JSON event log 的重放、恢复与确定性检查；
 - D4 旋转/反射变换下动作、状态、合法着掩码、PSK 和结果的 metamorphic 测试；
-- occupancy-only PSK、稳定后状态追加、重复局面和未决初始播种边界的专项测试；
+- occupancy-only PSK、初始空盘历史第零项、稳定后状态追加和重复局面的专项测试；
 - 结算的全局从新到旧顺序、逐事件 pop、全盘重建、同时移除所有零气且无保护棋块、确定性闭包、tombstone/no-op 和稳定状态历史追加测试；
 - C++ 规则、回放、undo/redo 和结算路径的 ASan 与 UBSan 运行；
 - 搜索接入后的搜索一致性与状态恢复测试；
@@ -193,4 +202,4 @@ Git 操作必须遵守：
 
 ## English Summary
 
-This is the canonical repository agent policy. MutaGo preserves the full-history KataGo v1.16.5 baseline at `ba938676d7f42d70950b3a535af2466fb642008c`. Gameplay semantics in the `0.1.0-draft` rules document are frozen. C++ is the sole production rules/search authority; Python is an independently implemented slow oracle; Node Gateway and React/TypeScript perform no rules computation. The frozen ABI is Model V19, Inputs V9, Training Schema V1, and Action Schema V1 with kind-major action encoding. Public rules identity, occupancy-only PSK, search keys, and NN-cache keys are four separate domains. Every stable post-state enters PSK history, including each settlement event pop after deterministic closure; unstable intermediate boards do not. The initial empty-board PSK seed remains unresolved. Before MutaGo search or product integration, at least one million reproducible legal/illegal atomic actions must produce zero C++/Python semantic differences, with sanitizer, undo/redo, D4, PSK, settlement, and replay coverage. Generated files must come from canonical schemas and declared generators. Stage only explicit named paths; never force-push or rewrite shared history. Preserve upstream attribution, licenses, notices, auditability, and non-endorsement.
+This is the canonical repository agent policy. MutaGo preserves the full-history KataGo v1.16.5 baseline at `ba938676d7f42d70950b3a535af2466fb642008c`. Collapse Go `0.1.0-draft` gameplay semantics and the M0 public identity are frozen as `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. C++ is the sole production rules/search authority; Python is an independent slow oracle; Node and React/TypeScript perform no rules computation. Action V1 is kind-major and its closed wire envelope contains exactly `schemaVersion`, `actionId`, and `kind`; missing/unknown fields, unknown versions, redundant coordinates, and inconsistent `kind`/ID pairs fail closed. Initial empty occupancy is PSK history entry zero, every stable action/terminal state and settlement-event closure is appended, and unstable intermediates are excluded. The MVP enables neither agreed dead-stone removal nor a dispute/recovery protocol. Resignation or game timeout may terminate immediately only at an exposed stable command boundary before a candidate action commits; once an action commits, any triggered settlement completes atomically without an internal command boundary. Operational timeouts and cancellation never synthesize game `TIMEOUT`. The historical bootstrap source ban does not prohibit authorized M0 contract source or later milestone implementation, but full rules/product work remains gated. Before search or product integration, at least one million reproducible legal/illegal atomic actions must produce zero C++/Python semantic differences. Stage only explicit paths, preserve upstream attribution and notices, and never force-push or rewrite shared history.

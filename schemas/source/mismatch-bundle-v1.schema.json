@@ -1,0 +1,780 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mismatch-bundle-v1.schema.json",
+  "title": "MutaGo Mismatch Bundle V1",
+  "description": "Self-contained differential mismatch artifact with a reproducible prefix and candidate intent submitted to both implementations, their independently preserved observations (which may themselves be wrong), typed normalized differences, and minimization status. Failure stage/code values belong to the reporting implementation and must not be reclassified through the other implementation's parser.",
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonnegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "asciiId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F]"
+      }
+    },
+    "asciiString": {
+      "type": "string",
+      "pattern": "^[\\u0000-\\u007F]*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F]"
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementationId",
+        "language",
+        "version",
+        "sourceRevision",
+        "buildConfiguration",
+        "platform"
+      ],
+      "properties": {
+        "implementationId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "language": {
+          "enum": [
+            "C++",
+            "PYTHON"
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "buildConfiguration": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "platform": {
+          "$ref": "#/$defs/asciiId"
+        }
+      }
+    },
+    "prefixAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepIndex",
+        "actor",
+        "action"
+      ],
+      "properties": {
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "actor": {
+          "enum": [
+            "BLACK",
+            "WHITE"
+          ]
+        },
+        "action": {
+          "$ref": "action-v1.schema.json"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepIndex",
+        "actor",
+        "intent"
+      ],
+      "properties": {
+        "stepIndex": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "actor": {
+          "enum": [
+            "BLACK",
+            "WHITE"
+          ]
+        },
+        "intent": {
+          "$ref": "conformance-fixture-v1.schema.json#/$defs/candidateIntent"
+        }
+      }
+    },
+    "difference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jsonPointer",
+        "category",
+        "cpp",
+        "python"
+      ],
+      "properties": {
+        "jsonPointer": {
+          "type": "string",
+          "pattern": "^(/([^~/]|~0|~1)*)*$",
+          "not": {
+            "pattern": "[\\u0000-\\u001F\\u007F]"
+          }
+        },
+        "category": {
+          "enum": [
+            "MISSING_IN_CPP",
+            "MISSING_IN_PYTHON",
+            "TYPE_MISMATCH",
+            "VALUE_MISMATCH",
+            "ARRAY_LENGTH_MISMATCH",
+            "ORDER_MISMATCH"
+          ]
+        },
+        "cpp": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/presentObservation"
+            },
+            {
+              "$ref": "#/$defs/absentObservation"
+            }
+          ]
+        },
+        "python": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/presentObservation"
+            },
+            {
+              "$ref": "#/$defs/absentObservation"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "MISSING_IN_CPP"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cpp": {
+                "$ref": "#/$defs/absentObservation"
+              },
+              "python": {
+                "$ref": "#/$defs/presentObservation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "const": "MISSING_IN_PYTHON"
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cpp": {
+                "$ref": "#/$defs/presentObservation"
+              },
+              "python": {
+                "$ref": "#/$defs/absentObservation"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "category": {
+                "enum": [
+                  "TYPE_MISMATCH",
+                  "VALUE_MISMATCH",
+                  "ARRAY_LENGTH_MISMATCH",
+                  "ORDER_MISMATCH"
+                ]
+              }
+            },
+            "required": [
+              "category"
+            ]
+          },
+          "then": {
+            "properties": {
+              "cpp": {
+                "$ref": "#/$defs/presentObservation"
+              },
+              "python": {
+                "$ref": "#/$defs/presentObservation"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cppImplementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementationId",
+        "language",
+        "version",
+        "sourceRevision",
+        "buildConfiguration",
+        "platform"
+      ],
+      "properties": {
+        "implementationId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "language": {
+          "const": "C++"
+        },
+        "version": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "buildConfiguration": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "platform": {
+          "$ref": "#/$defs/asciiId"
+        }
+      }
+    },
+    "pythonImplementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "implementationId",
+        "language",
+        "version",
+        "sourceRevision",
+        "buildConfiguration",
+        "platform"
+      ],
+      "properties": {
+        "implementationId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "language": {
+          "const": "PYTHON"
+        },
+        "version": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "sourceRevision": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "buildConfiguration": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "platform": {
+          "$ref": "#/$defs/asciiId"
+        }
+      }
+    },
+    "presentObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "canonicalJson"
+      ],
+      "properties": {
+        "present": {
+          "const": true
+        },
+        "canonicalJson": {
+          "$ref": "#/$defs/asciiString"
+        }
+      }
+    },
+    "absentObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "canonicalJson"
+      ],
+      "properties": {
+        "present": {
+          "const": false
+        },
+        "canonicalJson": {
+          "type": "null"
+        }
+      }
+    },
+    "lowercaseEvenHex": {
+      "type": "string",
+      "pattern": "^(?:[0-9a-f]{2})*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F]"
+      }
+    },
+    "projectionObservation": {
+      "description": "One implementation's preserved output and reported classification. rawUtf8Hex and failure metadata are evidence, not input for reclassification by the other implementation.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "value",
+            "rawUtf8Hex",
+            "failure"
+          ],
+          "properties": {
+            "status": {
+              "const": "VALID"
+            },
+            "value": {
+              "$ref": "semantic-projection-v1.schema.json"
+            },
+            "rawUtf8Hex": {
+              "type": "null"
+            },
+            "failure": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "value",
+            "rawUtf8Hex",
+            "failure"
+          ],
+          "properties": {
+            "status": {
+              "const": "SEMANTIC_INVALID"
+            },
+            "value": {
+              "$ref": "semantic-projection-v1.schema.json"
+            },
+            "rawUtf8Hex": {
+              "type": "null"
+            },
+            "failure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stage",
+                "code"
+              ],
+              "properties": {
+                "stage": {
+                  "const": "SEMANTIC"
+                },
+                "code": {
+                  "$ref": "#/$defs/asciiId"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "value",
+            "rawUtf8Hex",
+            "failure"
+          ],
+          "properties": {
+            "status": {
+              "const": "SCHEMA_INVALID"
+            },
+            "value": {},
+            "rawUtf8Hex": {
+              "$ref": "#/$defs/lowercaseEvenHex"
+            },
+            "failure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stage",
+                "code"
+              ],
+              "properties": {
+                "stage": {
+                  "const": "SCHEMA"
+                },
+                "code": {
+                  "$ref": "#/$defs/asciiId"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "value",
+            "rawUtf8Hex",
+            "failure"
+          ],
+          "properties": {
+            "status": {
+              "const": "RAW_INVALID"
+            },
+            "value": {
+              "type": "null"
+            },
+            "rawUtf8Hex": {
+              "$ref": "#/$defs/lowercaseEvenHex"
+            },
+            "failure": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "stage",
+                "code"
+              ],
+              "properties": {
+                "stage": {
+                  "enum": [
+                    "UTF8",
+                    "JSON",
+                    "PROFILE"
+                  ]
+                },
+                "code": {
+                  "$ref": "#/$defs/asciiId"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "minimizedResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acceptedPrefix",
+        "preCandidateProjection",
+        "candidate",
+        "cppObservation",
+        "pythonObservation",
+        "differences"
+      ],
+      "properties": {
+        "acceptedPrefix": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prefixAction"
+          }
+        },
+        "preCandidateProjection": {
+          "$ref": "semantic-projection-v1.schema.json"
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "cppObservation": {
+          "$ref": "#/$defs/projectionObservation"
+        },
+        "pythonObservation": {
+          "$ref": "#/$defs/projectionObservation"
+        },
+        "differences": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/difference"
+          }
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "bundleId",
+    "bundleKind",
+    "ruleset",
+    "descriptor",
+    "configuration",
+    "generator",
+    "implementations",
+    "reproduction",
+    "cppObservation",
+    "pythonObservation",
+    "differences",
+    "minimization"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "mismatch-bundle-v1"
+    },
+    "bundleId": {
+      "$ref": "#/$defs/asciiId"
+    },
+    "bundleKind": {
+      "enum": [
+        "OBSERVED",
+        "SYNTHETIC_CONTRACT_EXAMPLE"
+      ]
+    },
+    "ruleset": {
+      "$ref": "ruleset-descriptor-v1.schema.json#/$defs/rulesetIdentity"
+    },
+    "configuration": {
+      "$ref": "conformance-fixture-v1.schema.json#/$defs/ruleConfiguration"
+    },
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "seed"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "version": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "seed": {
+          "$ref": "#/$defs/safeInteger"
+        }
+      }
+    },
+    "implementations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpp",
+        "python"
+      ],
+      "properties": {
+        "cpp": {
+          "$ref": "#/$defs/cppImplementation"
+        },
+        "python": {
+          "$ref": "#/$defs/pythonImplementation"
+        }
+      }
+    },
+    "reproduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initialProjection",
+        "acceptedPrefix",
+        "preCandidateProjection",
+        "candidate"
+      ],
+      "properties": {
+        "initialProjection": {
+          "$ref": "semantic-projection-v1.schema.json"
+        },
+        "acceptedPrefix": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prefixAction"
+          }
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate"
+        },
+        "preCandidateProjection": {
+          "$ref": "semantic-projection-v1.schema.json"
+        }
+      }
+    },
+    "differences": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/difference"
+      }
+    },
+    "minimization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "originalPrefixLength",
+        "minimizedPrefixLength",
+        "reproducible",
+        "result"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "NOT_RUN",
+            "IN_PROGRESS",
+            "MINIMIZED",
+            "NOT_REDUCIBLE"
+          ]
+        },
+        "originalPrefixLength": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "minimizedPrefixLength": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "reproducible": {
+          "type": "boolean"
+        },
+        "result": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/minimizedResult"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "MINIMIZED"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reproducible": {
+                "const": true
+              },
+              "result": {
+                "$ref": "#/$defs/minimizedResult"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "NOT_REDUCIBLE"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reproducible": {
+                "const": true
+              },
+              "result": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "NOT_RUN",
+                  "IN_PROGRESS"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "cppObservation": {
+      "$ref": "#/$defs/projectionObservation"
+    },
+    "pythonObservation": {
+      "$ref": "#/$defs/projectionObservation"
+    },
+    "descriptor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "ruleset-descriptor-v1.schema.json"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "descriptor": {
+            "type": "null"
+          }
+        },
+        "required": [
+          "descriptor"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ruleset": {
+            "$ref": "ruleset-descriptor-v1.schema.json#/$defs/publicIdentity"
+          },
+          "configuration": {
+            "$ref": "conformance-fixture-v1.schema.json#/$defs/officialConfiguration"
+          }
+        }
+      }
+    }
+  ]
+}

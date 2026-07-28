@@ -1,0 +1,898 @@
+{
+  "schemaVersion": "conformance-fixture-v1",
+  "fixtureId": "contract-empty-two-pass",
+  "fixtureClass": "CONTRACT_EXAMPLE",
+  "ruleset": {
+    "rulesetId": "mutago.collapse-go",
+    "semanticVersion": "0.1.0-draft",
+    "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+  },
+  "descriptor": null,
+  "configuration": {
+    "boardSize": 19,
+    "threshold": 150,
+    "initialActor": "BLACK",
+    "initialPSKSeed": true,
+    "quotas": {
+      "BLACK": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      },
+      "WHITE": {
+        "IMMORTAL": 1,
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1
+      }
+    },
+    "scoring": "CHINESE_AREA",
+    "komi": {
+      "recipient": "WHITE",
+      "numerator": 15,
+      "denominator": 2
+    },
+    "deadStoneShortcut": "DEFERRED"
+  },
+  "provenance": {
+    "kind": "HAND_AUTHORED",
+    "generator": "contract-owner",
+    "generatorVersion": "1",
+    "seed": null
+  },
+  "tags": [
+    "initial-psk-seed",
+    "pass",
+    "settlement",
+    "ordinary-play",
+    "rejection",
+    "scoring",
+    "terminal"
+  ],
+  "initialProjection": {
+    "schemaVersion": "semantic-projection-v1",
+    "ruleset": {
+      "rulesetId": "mutago.collapse-go",
+      "semanticVersion": "0.1.0-draft",
+      "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+    },
+    "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+    "fixtureId": "contract-empty-two-pass",
+    "stepIndex": 0,
+    "transition": null,
+    "state": {
+      "revision": 0,
+      "logPosition": 0,
+      "boardSize": 19,
+      "threshold": 150,
+      "occupancy": {
+        "black": [],
+        "white": []
+      },
+      "stones": [],
+      "actor": "BLACK",
+      "phase": "COLLAPSE_PLAY",
+      "atomicActionCount": 0,
+      "consecutivePasses": 0,
+      "settlementCompleted": false,
+      "pendingDouble": null,
+      "initialQuotas": {
+        "BLACK": {
+          "IMMORTAL": 1,
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1
+        },
+        "WHITE": {
+          "IMMORTAL": 1,
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1
+        }
+      },
+      "remainingQuotas": {
+        "BLACK": {
+          "IMMORTAL": 1,
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1
+        },
+        "WHITE": {
+          "IMMORTAL": 1,
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1
+        }
+      },
+      "usedQuotas": {
+        "BLACK": {
+          "IMMORTAL": 0,
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0
+        },
+        "WHITE": {
+          "IMMORTAL": 0,
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0
+        }
+      },
+      "expiredQuotas": {
+        "BLACK": {
+          "IMMORTAL": 0,
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0
+        },
+        "WHITE": {
+          "IMMORTAL": 0,
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0
+        }
+      },
+      "ledger": [],
+      "pskHistory": [
+        {
+          "black": [],
+          "white": []
+        }
+      ],
+      "terminal": {
+        "ended": false
+      }
+    },
+    "derived": {
+      "legalActionRanges": [
+        {
+          "first": 0,
+          "last": 1444
+        }
+      ]
+    },
+    "debug": {
+      "groups": []
+    }
+  },
+  "steps": [
+    {
+      "stepIndex": 1,
+      "candidateActor": "BLACK",
+      "candidate": {
+        "kind": "ACTION",
+        "action": {
+          "schemaVersion": "action-v1",
+          "actionId": 1444,
+          "kind": "PASS"
+        }
+      },
+      "expectedProjection": {
+        "schemaVersion": "semantic-projection-v1",
+        "ruleset": {
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft",
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+        },
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "fixtureId": "contract-empty-two-pass",
+        "stepIndex": 1,
+        "transition": {
+          "accepted": true,
+          "transitionKind": "ATOMIC_ACTION",
+          "errorCode": null,
+          "atomicEvent": {
+            "eventId": "action-1",
+            "actionNumber": 1,
+            "actor": "BLACK",
+            "action": {
+              "schemaVersion": "action-v1",
+              "actionId": 1444,
+              "kind": "PASS"
+            },
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "stableOccupancy": {
+              "black": [],
+              "white": []
+            },
+            "pskHistoryIndex": 1
+          },
+          "settlement": null,
+          "terminalEvent": null
+        },
+        "state": {
+          "revision": 1,
+          "logPosition": 1,
+          "boardSize": 19,
+          "threshold": 150,
+          "occupancy": {
+            "black": [],
+            "white": []
+          },
+          "stones": [],
+          "actor": "WHITE",
+          "phase": "COLLAPSE_PLAY",
+          "atomicActionCount": 1,
+          "consecutivePasses": 1,
+          "settlementCompleted": false,
+          "pendingDouble": null,
+          "initialQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "remainingQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "usedQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "expiredQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "ledger": [],
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            }
+          ],
+          "terminal": {
+            "ended": false
+          }
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 1444
+            }
+          ]
+        },
+        "debug": {
+          "groups": []
+        }
+      }
+    },
+    {
+      "stepIndex": 2,
+      "candidateActor": "WHITE",
+      "candidate": {
+        "kind": "ACTION",
+        "action": {
+          "schemaVersion": "action-v1",
+          "actionId": 1444,
+          "kind": "PASS"
+        }
+      },
+      "expectedProjection": {
+        "schemaVersion": "semantic-projection-v1",
+        "ruleset": {
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft",
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+        },
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "fixtureId": "contract-empty-two-pass",
+        "stepIndex": 2,
+        "transition": {
+          "accepted": true,
+          "transitionKind": "ATOMIC_ACTION",
+          "errorCode": null,
+          "atomicEvent": {
+            "eventId": "action-2",
+            "actionNumber": 2,
+            "actor": "WHITE",
+            "action": {
+              "schemaVersion": "action-v1",
+              "actionId": 1444,
+              "kind": "PASS"
+            },
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "stableOccupancy": {
+              "black": [],
+              "white": []
+            },
+            "pskHistoryIndex": 2
+          },
+          "settlement": {
+            "triggerReason": "PRE_THRESHOLD_TWO_PASSES",
+            "handoffActor": "BLACK",
+            "steps": []
+          },
+          "terminalEvent": null
+        },
+        "state": {
+          "revision": 2,
+          "logPosition": 2,
+          "boardSize": 19,
+          "threshold": 150,
+          "occupancy": {
+            "black": [],
+            "white": []
+          },
+          "stones": [],
+          "actor": "BLACK",
+          "phase": "ORDINARY_PLAY",
+          "atomicActionCount": 2,
+          "consecutivePasses": 0,
+          "settlementCompleted": true,
+          "pendingDouble": null,
+          "initialQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "remainingQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "usedQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "expiredQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "ledger": [],
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            }
+          ],
+          "terminal": {
+            "ended": false
+          }
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 360
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "debug": {
+          "groups": []
+        }
+      }
+    },
+    {
+      "stepIndex": 3,
+      "candidateActor": "BLACK",
+      "candidate": {
+        "kind": "ACTION",
+        "action": {
+          "schemaVersion": "action-v1",
+          "actionId": 541,
+          "kind": "IMMORTAL"
+        }
+      },
+      "expectedProjection": {
+        "schemaVersion": "semantic-projection-v1",
+        "ruleset": {
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft",
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+        },
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "fixtureId": "contract-empty-two-pass",
+        "stepIndex": 3,
+        "transition": {
+          "accepted": false,
+          "transitionKind": "REJECTED",
+          "errorCode": "INVALID_PHASE",
+          "atomicEvent": null,
+          "settlement": null,
+          "terminalEvent": null
+        },
+        "state": {
+          "revision": 2,
+          "logPosition": 2,
+          "boardSize": 19,
+          "threshold": 150,
+          "occupancy": {
+            "black": [],
+            "white": []
+          },
+          "stones": [],
+          "actor": "BLACK",
+          "phase": "ORDINARY_PLAY",
+          "atomicActionCount": 2,
+          "consecutivePasses": 0,
+          "settlementCompleted": true,
+          "pendingDouble": null,
+          "initialQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "remainingQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "usedQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "expiredQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "ledger": [],
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            }
+          ],
+          "terminal": {
+            "ended": false
+          }
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 360
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "debug": {
+          "groups": []
+        }
+      }
+    },
+    {
+      "stepIndex": 4,
+      "candidateActor": "BLACK",
+      "candidate": {
+        "kind": "ACTION",
+        "action": {
+          "schemaVersion": "action-v1",
+          "actionId": 1444,
+          "kind": "PASS"
+        }
+      },
+      "expectedProjection": {
+        "schemaVersion": "semantic-projection-v1",
+        "ruleset": {
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft",
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+        },
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "fixtureId": "contract-empty-two-pass",
+        "stepIndex": 4,
+        "transition": {
+          "accepted": true,
+          "transitionKind": "ATOMIC_ACTION",
+          "errorCode": null,
+          "atomicEvent": {
+            "eventId": "action-3",
+            "actionNumber": 3,
+            "actor": "BLACK",
+            "action": {
+              "schemaVersion": "action-v1",
+              "actionId": 1444,
+              "kind": "PASS"
+            },
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "stableOccupancy": {
+              "black": [],
+              "white": []
+            },
+            "pskHistoryIndex": 3
+          },
+          "settlement": null,
+          "terminalEvent": null
+        },
+        "state": {
+          "revision": 3,
+          "logPosition": 3,
+          "boardSize": 19,
+          "threshold": 150,
+          "occupancy": {
+            "black": [],
+            "white": []
+          },
+          "stones": [],
+          "actor": "WHITE",
+          "phase": "ORDINARY_PLAY",
+          "atomicActionCount": 3,
+          "consecutivePasses": 1,
+          "settlementCompleted": true,
+          "pendingDouble": null,
+          "initialQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "remainingQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "usedQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "expiredQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "ledger": [],
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            }
+          ],
+          "terminal": {
+            "ended": false
+          }
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 360
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "debug": {
+          "groups": []
+        }
+      }
+    },
+    {
+      "stepIndex": 5,
+      "candidateActor": "WHITE",
+      "candidate": {
+        "kind": "ACTION",
+        "action": {
+          "schemaVersion": "action-v1",
+          "actionId": 1444,
+          "kind": "PASS"
+        }
+      },
+      "expectedProjection": {
+        "schemaVersion": "semantic-projection-v1",
+        "ruleset": {
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft",
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+        },
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "fixtureId": "contract-empty-two-pass",
+        "stepIndex": 5,
+        "transition": {
+          "accepted": true,
+          "transitionKind": "ATOMIC_ACTION",
+          "errorCode": null,
+          "atomicEvent": {
+            "eventId": "action-4",
+            "actionNumber": 4,
+            "actor": "WHITE",
+            "action": {
+              "schemaVersion": "action-v1",
+              "actionId": 1444,
+              "kind": "PASS"
+            },
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "stableOccupancy": {
+              "black": [],
+              "white": []
+            },
+            "pskHistoryIndex": 4
+          },
+          "settlement": null,
+          "terminalEvent": {
+            "eventId": "terminal-5",
+            "reason": "SCORE",
+            "winner": "WHITE",
+            "loser": "BLACK",
+            "stableOccupancy": {
+              "black": [],
+              "white": []
+            },
+            "pskHistoryIndex": 5
+          }
+        },
+        "state": {
+          "revision": 4,
+          "logPosition": 5,
+          "boardSize": 19,
+          "threshold": 150,
+          "occupancy": {
+            "black": [],
+            "white": []
+          },
+          "stones": [],
+          "actor": null,
+          "phase": "TERMINAL",
+          "atomicActionCount": 4,
+          "consecutivePasses": 2,
+          "settlementCompleted": true,
+          "pendingDouble": null,
+          "initialQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "remainingQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "usedQuotas": {
+            "BLACK": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            },
+            "WHITE": {
+              "IMMORTAL": 0,
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0
+            }
+          },
+          "expiredQuotas": {
+            "BLACK": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            },
+            "WHITE": {
+              "IMMORTAL": 1,
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1
+            }
+          },
+          "ledger": [],
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [],
+              "white": []
+            }
+          ],
+          "terminal": {
+            "ended": true,
+            "reason": "SCORE",
+            "winner": "WHITE",
+            "loser": "BLACK",
+            "score": {
+              "black": {
+                "numerator": 0,
+                "denominator": 2
+              },
+              "white": {
+                "numerator": 15,
+                "denominator": 2
+              },
+              "margin": {
+                "numerator": 15,
+                "denominator": 2
+              }
+            }
+          }
+        },
+        "derived": {
+          "legalActionRanges": []
+        },
+        "debug": {
+          "groups": []
+        }
+      }
+    }
+  ]
+}

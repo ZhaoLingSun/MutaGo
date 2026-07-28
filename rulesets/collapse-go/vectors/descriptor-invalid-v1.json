@@ -1,0 +1,83 @@
+{
+  "vectorVersion": "descriptor-invalid-v1",
+  "baseDescriptor": "../descriptor-v0.1.0-draft.json",
+  "cases": [
+    {
+      "id": "unknown-top-level-field",
+      "operation": "ADD",
+      "jsonPointer": "/unexpected",
+      "value": null,
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "unknown-nested-field",
+      "operation": "ADD",
+      "jsonPointer": "/positionalSuperko/unexpected",
+      "value": null,
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "missing-public-ruleset-id",
+      "operation": "REMOVE",
+      "jsonPointer": "/identity/rulesetId",
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "repository-slug-is-not-public-id",
+      "operation": "REPLACE",
+      "jsonPointer": "/identity/rulesetId",
+      "value": "collapse-go",
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "initial-psk-seed-must-be-true",
+      "operation": "REPLACE",
+      "jsonPointer": "/positionalSuperko/initialPSKSeed",
+      "value": false,
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "initial-state-psk-seed-must-be-true",
+      "operation": "REPLACE",
+      "jsonPointer": "/initialState/initialPSKSeed",
+      "value": false,
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "point-major-layout-rejected",
+      "operation": "REPLACE",
+      "jsonPointer": "/actionSpace/layout",
+      "value": "POINT_MAJOR",
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "dead-stone-shortcut-is-deferred",
+      "operation": "REPLACE",
+      "jsonPointer": "/deadStoneHandling/mvpShortcutStatus",
+      "value": "ENABLED",
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "digest-encoding-must-be-lowercase",
+      "operation": "REPLACE",
+      "jsonPointer": "/canonicalization/digestEncoding",
+      "value": "UPPERCASE_HEX",
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "semantic-version-is-frozen",
+      "operation": "REPLACE",
+      "jsonPointer": "/identity/semanticVersion",
+      "value": "0.1.0",
+      "expectedErrorCode": "descriptor-validation"
+    },
+    {
+      "id": "official-version-semantic-drift-rejected-nonpublic",
+      "operation": "REPLACE",
+      "jsonPointer": "/quotas/initialByPlayer/BLACK/IMMORTAL",
+      "value": 2,
+      "requirePublic": false,
+      "expectedErrorCode": "descriptor-validation"
+    }
+  ]
+}

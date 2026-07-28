@@ -29,6 +29,9 @@ namespace Tests {
   //testrules.cpp
   void runRulesTests();
 
+  //testcollapsecontracts.cpp
+  void runCollapseContractTests();
+
   //testscore.cpp
   void runScoreTests();
 

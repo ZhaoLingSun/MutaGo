@@ -1,0 +1,3168 @@
+{
+  "vectorVersion": "action-v1",
+  "constants": {
+    "canvasSize": 19,
+    "canvasPointCount": 361,
+    "kindStride": 361,
+    "flatActionCount": 1445,
+    "passActionId": 1444,
+    "boardOffsets": {
+      "9": 5,
+      "13": 3,
+      "19": 0
+    },
+    "semanticPointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+    "inverseSymmetryIds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      6,
+      5,
+      7
+    ]
+  },
+  "exhaustiveCodec": {
+    "recordCount": 1445,
+    "recordOrder": "ACTION_ID_ASCENDING",
+    "recordFields": [
+      "actionId",
+      "kind",
+      "canvasX",
+      "canvasY"
+    ],
+    "canonicalRecordsSha256": "c2d1f7d5c8664be457647f83ac6690124e7ad3e3bd4afad3c071fea4f221e4cb"
+  },
+  "familyBoundaries": [
+    {
+      "kind": "NORMAL",
+      "kindCode": 0,
+      "first": {
+        "schemaVersion": "action-v1",
+        "actionId": 0,
+        "kind": "NORMAL"
+      },
+      "last": {
+        "schemaVersion": "action-v1",
+        "actionId": 360,
+        "kind": "NORMAL"
+      }
+    },
+    {
+      "kind": "IMMORTAL",
+      "kindCode": 1,
+      "first": {
+        "schemaVersion": "action-v1",
+        "actionId": 361,
+        "kind": "IMMORTAL"
+      },
+      "last": {
+        "schemaVersion": "action-v1",
+        "actionId": 721,
+        "kind": "IMMORTAL"
+      }
+    },
+    {
+      "kind": "DOUBLE_START",
+      "kindCode": 2,
+      "first": {
+        "schemaVersion": "action-v1",
+        "actionId": 722,
+        "kind": "DOUBLE_START"
+      },
+      "last": {
+        "schemaVersion": "action-v1",
+        "actionId": 1082,
+        "kind": "DOUBLE_START"
+      }
+    },
+    {
+      "kind": "EIGHTWAY",
+      "kindCode": 3,
+      "first": {
+        "schemaVersion": "action-v1",
+        "actionId": 1083,
+        "kind": "EIGHTWAY"
+      },
+      "last": {
+        "schemaVersion": "action-v1",
+        "actionId": 1443,
+        "kind": "EIGHTWAY"
+      }
+    },
+    {
+      "kind": "PASS",
+      "kindCode": null,
+      "first": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "last": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      }
+    }
+  ],
+  "centeredMappings": [
+    {
+      "id": "n9-top-left",
+      "boardSize": 9,
+      "semanticX": 0,
+      "semanticY": 0,
+      "semanticPointIndex": 0,
+      "canvasX": 5,
+      "canvasY": 5,
+      "canvasPointIndex": 100,
+      "actionIds": {
+        "NORMAL": 100,
+        "IMMORTAL": 461,
+        "DOUBLE_START": 822,
+        "EIGHTWAY": 1183
+      }
+    },
+    {
+      "id": "n9-asymmetric",
+      "boardSize": 9,
+      "semanticX": 1,
+      "semanticY": 2,
+      "semanticPointIndex": 19,
+      "canvasX": 6,
+      "canvasY": 7,
+      "canvasPointIndex": 139,
+      "actionIds": {
+        "NORMAL": 139,
+        "IMMORTAL": 500,
+        "DOUBLE_START": 861,
+        "EIGHTWAY": 1222
+      }
+    },
+    {
+      "id": "n9-center",
+      "boardSize": 9,
+      "semanticX": 4,
+      "semanticY": 4,
+      "semanticPointIndex": 40,
+      "canvasX": 9,
+      "canvasY": 9,
+      "canvasPointIndex": 180,
+      "actionIds": {
+        "NORMAL": 180,
+        "IMMORTAL": 541,
+        "DOUBLE_START": 902,
+        "EIGHTWAY": 1263
+      }
+    },
+    {
+      "id": "n9-bottom-right",
+      "boardSize": 9,
+      "semanticX": 8,
+      "semanticY": 8,
+      "semanticPointIndex": 80,
+      "canvasX": 13,
+      "canvasY": 13,
+      "canvasPointIndex": 260,
+      "actionIds": {
+        "NORMAL": 260,
+        "IMMORTAL": 621,
+        "DOUBLE_START": 982,
+        "EIGHTWAY": 1343
+      }
+    },
+    {
+      "id": "n13-top-left",
+      "boardSize": 13,
+      "semanticX": 0,
+      "semanticY": 0,
+      "semanticPointIndex": 0,
+      "canvasX": 3,
+      "canvasY": 3,
+      "canvasPointIndex": 60,
+      "actionIds": {
+        "NORMAL": 60,
+        "IMMORTAL": 421,
+        "DOUBLE_START": 782,
+        "EIGHTWAY": 1143
+      }
+    },
+    {
+      "id": "n13-asymmetric",
+      "boardSize": 13,
+      "semanticX": 2,
+      "semanticY": 4,
+      "semanticPointIndex": 54,
+      "canvasX": 5,
+      "canvasY": 7,
+      "canvasPointIndex": 138,
+      "actionIds": {
+        "NORMAL": 138,
+        "IMMORTAL": 499,
+        "DOUBLE_START": 860,
+        "EIGHTWAY": 1221
+      }
+    },
+    {
+      "id": "n13-center",
+      "boardSize": 13,
+      "semanticX": 6,
+      "semanticY": 6,
+      "semanticPointIndex": 84,
+      "canvasX": 9,
+      "canvasY": 9,
+      "canvasPointIndex": 180,
+      "actionIds": {
+        "NORMAL": 180,
+        "IMMORTAL": 541,
+        "DOUBLE_START": 902,
+        "EIGHTWAY": 1263
+      }
+    },
+    {
+      "id": "n13-bottom-right",
+      "boardSize": 13,
+      "semanticX": 12,
+      "semanticY": 12,
+      "semanticPointIndex": 168,
+      "canvasX": 15,
+      "canvasY": 15,
+      "canvasPointIndex": 300,
+      "actionIds": {
+        "NORMAL": 300,
+        "IMMORTAL": 661,
+        "DOUBLE_START": 1022,
+        "EIGHTWAY": 1383
+      }
+    },
+    {
+      "id": "n19-top-left",
+      "boardSize": 19,
+      "semanticX": 0,
+      "semanticY": 0,
+      "semanticPointIndex": 0,
+      "canvasX": 0,
+      "canvasY": 0,
+      "canvasPointIndex": 0,
+      "actionIds": {
+        "NORMAL": 0,
+        "IMMORTAL": 361,
+        "DOUBLE_START": 722,
+        "EIGHTWAY": 1083
+      }
+    },
+    {
+      "id": "n19-asymmetric",
+      "boardSize": 19,
+      "semanticX": 3,
+      "semanticY": 7,
+      "semanticPointIndex": 136,
+      "canvasX": 3,
+      "canvasY": 7,
+      "canvasPointIndex": 136,
+      "actionIds": {
+        "NORMAL": 136,
+        "IMMORTAL": 497,
+        "DOUBLE_START": 858,
+        "EIGHTWAY": 1219
+      }
+    },
+    {
+      "id": "n19-center",
+      "boardSize": 19,
+      "semanticX": 9,
+      "semanticY": 9,
+      "semanticPointIndex": 180,
+      "canvasX": 9,
+      "canvasY": 9,
+      "canvasPointIndex": 180,
+      "actionIds": {
+        "NORMAL": 180,
+        "IMMORTAL": 541,
+        "DOUBLE_START": 902,
+        "EIGHTWAY": 1263
+      }
+    },
+    {
+      "id": "n19-bottom-right",
+      "boardSize": 19,
+      "semanticX": 18,
+      "semanticY": 18,
+      "semanticPointIndex": 360,
+      "canvasX": 18,
+      "canvasY": 18,
+      "canvasPointIndex": 360,
+      "actionIds": {
+        "NORMAL": 360,
+        "IMMORTAL": 721,
+        "DOUBLE_START": 1082,
+        "EIGHTWAY": 1443
+      }
+    }
+  ],
+  "exhaustiveCenteredMappings": {
+    "recordOrder": "SEMANTIC_ROW_MAJOR",
+    "recordFields": [
+      "semanticX",
+      "semanticY",
+      "semanticPointIndex",
+      "canvasX",
+      "canvasY",
+      "canvasPointIndex",
+      "actionIds"
+    ],
+    "perBoard": {
+      "9": {
+        "recordCount": 81,
+        "canonicalRecordsSha256": "0cd6aeaec9aaaa530ce7653f5cc99d433a4c83173c16010c476d2d592ccd862e"
+      },
+      "13": {
+        "recordCount": 169,
+        "canonicalRecordsSha256": "11008d766cbb24fc29e066ba8a39cd7729d928305b6da62a5e3b1da46db58869"
+      },
+      "19": {
+        "recordCount": 361,
+        "canonicalRecordsSha256": "acb321a8d07c4c7ec48a9e3932363e14122a0dd766a2b8b67dc454164907d156"
+      }
+    }
+  },
+  "exhaustiveBoardFootprints": {
+    "inputOrder": "ACTION_ID_ASCENDING",
+    "acceptedRecordFields": [
+      "actionId",
+      "kind",
+      "semanticX",
+      "semanticY"
+    ],
+    "rejectedRecordFields": [
+      "actionId",
+      "kind",
+      "expectedErrorCode"
+    ],
+    "perBoard": {
+      "9": {
+        "acceptedRecordCount": 325,
+        "acceptedCanonicalRecordsSha256": "2cba108dc9ca9ee47ef03816342b5e680ff1fd6a563187b78ad2340557b84e49",
+        "rejectedRecordCount": 1120,
+        "rejectedCanonicalRecordsSha256": "b2b8c9396307c3d2c7638084a4360d3c338803abc74500305fc889256264a7f1"
+      },
+      "13": {
+        "acceptedRecordCount": 677,
+        "acceptedCanonicalRecordsSha256": "b4e309b9296a49b7589dfd3b871f3107eed9159b49603af4f9c0abf9ec80eba8",
+        "rejectedRecordCount": 768,
+        "rejectedCanonicalRecordsSha256": "d3bbff9787089866652ef1edbbf09dc7b53179f08b478800b3c7554037c9e3f5"
+      },
+      "19": {
+        "acceptedRecordCount": 1445,
+        "acceptedCanonicalRecordsSha256": "59bce361897deb8cd6713e0c221533b542e49ad6d4f479ecc12812a288ac038d",
+        "rejectedRecordCount": 0,
+        "rejectedCanonicalRecordsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    }
+  },
+  "offBoardRejections": [
+    {
+      "id": "semantic-n9-normal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "NORMAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-normal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "NORMAL",
+      "x": 9,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-normal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-normal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 9,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-immortal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "IMMORTAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-immortal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "IMMORTAL",
+      "x": 9,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-immortal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-immortal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": 9,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-double_start-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "DOUBLE_START",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-double_start-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "DOUBLE_START",
+      "x": 9,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-double_start-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-double_start-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": 9,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-eightway-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "EIGHTWAY",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-eightway-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "EIGHTWAY",
+      "x": 9,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-eightway-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n9-eightway-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": 9,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-normal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "NORMAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-normal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "NORMAL",
+      "x": 13,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-normal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-normal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 13,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-immortal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "IMMORTAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-immortal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "IMMORTAL",
+      "x": 13,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-immortal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-immortal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": 13,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-double_start-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "DOUBLE_START",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-double_start-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "DOUBLE_START",
+      "x": 13,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-double_start-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-double_start-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": 13,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-eightway-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "EIGHTWAY",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-eightway-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "EIGHTWAY",
+      "x": 13,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-eightway-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n13-eightway-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 13,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": 13,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-normal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "NORMAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-normal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "NORMAL",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-normal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-normal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-immortal-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "IMMORTAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-immortal-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "IMMORTAL",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-immortal-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-immortal-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-double_start-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "DOUBLE_START",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-double_start-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "DOUBLE_START",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-double_start-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-double_start-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-eightway-x-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "EIGHTWAY",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-eightway-x-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "EIGHTWAY",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-eightway-y-negative",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-n19-eightway-y-too-large",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 19,
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-normal-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 99,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-normal-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 109,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-normal-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 81,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-normal-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 271,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-immortal-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 460,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-immortal-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 470,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-immortal-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 442,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-immortal-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 632,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-double_start-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 821,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-double_start-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 831,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-double_start-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 803,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-double_start-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 993,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-eightway-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 1182,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-eightway-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 1192,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-eightway-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 1164,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n9-eightway-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 9,
+      "actionId": 1354,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-normal-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 59,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-normal-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 73,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-normal-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 41,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-normal-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 307,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-immortal-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 420,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-immortal-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 434,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-immortal-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 402,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-immortal-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 668,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-double_start-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 781,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-double_start-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 795,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-double_start-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 763,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-double_start-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 1029,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-eightway-left",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 1142,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-eightway-right",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 1156,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-eightway-top",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 1124,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-footprint-n13-eightway-bottom",
+      "operation": "DECODE_FOR_BOARD",
+      "boardSize": 13,
+      "actionId": 1390,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-normal-x-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "NORMAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-normal-x-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "NORMAL",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-normal-y-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "NORMAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-normal-y-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-immortal-x-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "IMMORTAL",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-immortal-x-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "IMMORTAL",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-immortal-y-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-immortal-y-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "IMMORTAL",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-double_start-x-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "DOUBLE_START",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-double_start-x-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "DOUBLE_START",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-double_start-y-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-double_start-y-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "DOUBLE_START",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-eightway-x-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "EIGHTWAY",
+      "x": -1,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-eightway-x-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "EIGHTWAY",
+      "x": 19,
+      "y": 0,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-eightway-y-negative",
+      "operation": "ENCODE_CANVAS",
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": -1,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "canvas-eightway-y-too-large",
+      "operation": "ENCODE_CANVAS",
+      "kind": "EIGHTWAY",
+      "x": 0,
+      "y": 19,
+      "expectedErrorCode": "point-off-board"
+    },
+    {
+      "id": "semantic-x-noninteger",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 9,
+      "kind": "NORMAL",
+      "x": "0",
+      "y": 0,
+      "expectedErrorCode": "invalid-integer"
+    },
+    {
+      "id": "semantic-board-unsupported",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": 11,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 0,
+      "expectedErrorCode": "unsupported-board-size"
+    },
+    {
+      "id": "semantic-board-boolean",
+      "operation": "ENCODE_SEMANTIC",
+      "boardSize": true,
+      "kind": "NORMAL",
+      "x": 0,
+      "y": 0,
+      "expectedErrorCode": "invalid-integer"
+    },
+    {
+      "id": "canvas-x-noninteger",
+      "operation": "ENCODE_CANVAS",
+      "kind": "NORMAL",
+      "x": "0",
+      "y": 0,
+      "expectedErrorCode": "invalid-integer"
+    },
+    {
+      "id": "decode-noninteger",
+      "operation": "DECODE",
+      "actionId": "0",
+      "expectedErrorCode": "invalid-integer"
+    },
+    {
+      "id": "decode-boolean",
+      "operation": "DECODE",
+      "actionId": true,
+      "expectedErrorCode": "invalid-integer"
+    },
+    {
+      "id": "decode-negative",
+      "operation": "DECODE",
+      "actionId": -1,
+      "expectedErrorCode": "action-id-out-of-range"
+    },
+    {
+      "id": "decode-too-large",
+      "operation": "DECODE",
+      "actionId": 1445,
+      "expectedErrorCode": "action-id-out-of-range"
+    },
+    {
+      "id": "unknown-kind",
+      "operation": "ENCODE_CANVAS",
+      "kind": "UNKNOWN",
+      "x": 0,
+      "y": 0,
+      "expectedErrorCode": "unknown-action-kind"
+    }
+  ],
+  "invalidEnvelopes": [
+    {
+      "id": "unknown-schema-version",
+      "action": {
+        "schemaVersion": "action-v2",
+        "actionId": 0,
+        "kind": "NORMAL"
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "action-id-kind-mismatch",
+      "action": {
+        "schemaVersion": "action-v1",
+        "actionId": 0,
+        "kind": "EIGHTWAY"
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "redundant-coordinate-field",
+      "action": {
+        "schemaVersion": "action-v1",
+        "actionId": 0,
+        "kind": "NORMAL",
+        "canvasX": 0
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "missing-schema-version",
+      "action": {
+        "actionId": 0,
+        "kind": "NORMAL"
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "missing-action-id",
+      "action": {
+        "schemaVersion": "action-v1",
+        "kind": "NORMAL"
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "missing-kind",
+      "action": {
+        "schemaVersion": "action-v1",
+        "actionId": 0
+      },
+      "expectedErrorCode": "schema-validation"
+    },
+    {
+      "id": "unknown-envelope-kind",
+      "action": {
+        "schemaVersion": "action-v1",
+        "actionId": 0,
+        "kind": "UNKNOWN"
+      },
+      "expectedErrorCode": "schema-validation"
+    }
+  ],
+  "d4RoundTrips": [
+    {
+      "id": "d4-n9-normal-s0",
+      "boardSize": 9,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-normal-s1",
+      "boardSize": 9,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 215,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-normal-s2",
+      "boardSize": 9,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 145,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-normal-s3",
+      "boardSize": 9,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 221,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-normal-s4",
+      "boardSize": 9,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 121,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-normal-s5",
+      "boardSize": 9,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 125,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-normal-s6",
+      "boardSize": 9,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 235,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-normal-s7",
+      "boardSize": 9,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 139,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 239,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-immortal-s0",
+      "boardSize": 9,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-immortal-s1",
+      "boardSize": 9,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 576,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-immortal-s2",
+      "boardSize": 9,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 506,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-immortal-s3",
+      "boardSize": 9,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 582,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-immortal-s4",
+      "boardSize": 9,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 482,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-immortal-s5",
+      "boardSize": 9,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 486,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-immortal-s6",
+      "boardSize": 9,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 596,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-immortal-s7",
+      "boardSize": 9,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 500,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 600,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-double_start-s0",
+      "boardSize": 9,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-double_start-s1",
+      "boardSize": 9,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 937,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-double_start-s2",
+      "boardSize": 9,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 867,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-double_start-s3",
+      "boardSize": 9,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 943,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-double_start-s4",
+      "boardSize": 9,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 843,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-double_start-s5",
+      "boardSize": 9,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 847,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-double_start-s6",
+      "boardSize": 9,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 957,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-double_start-s7",
+      "boardSize": 9,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 861,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 961,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-eightway-s0",
+      "boardSize": 9,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-eightway-s1",
+      "boardSize": 9,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1298,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 1,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-eightway-s2",
+      "boardSize": 9,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1228,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n9-eightway-s3",
+      "boardSize": 9,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1304,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 6
+    },
+    {
+      "id": "d4-n9-eightway-s4",
+      "boardSize": 9,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1204,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-eightway-s5",
+      "boardSize": 9,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1208,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 1
+    },
+    {
+      "id": "d4-n9-eightway-s6",
+      "boardSize": 9,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1318,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n9-eightway-s7",
+      "boardSize": 9,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1222,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1322,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 6,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n13-normal-s0",
+      "boardSize": 13,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-normal-s1",
+      "boardSize": 13,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 214,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-normal-s2",
+      "boardSize": 13,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 146,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-normal-s3",
+      "boardSize": 13,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 222,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-normal-s4",
+      "boardSize": 13,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 102,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-normal-s5",
+      "boardSize": 13,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 106,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-normal-s6",
+      "boardSize": 13,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 254,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-normal-s7",
+      "boardSize": 13,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 138,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 258,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-immortal-s0",
+      "boardSize": 13,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-immortal-s1",
+      "boardSize": 13,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 575,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-immortal-s2",
+      "boardSize": 13,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 507,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-immortal-s3",
+      "boardSize": 13,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 583,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-immortal-s4",
+      "boardSize": 13,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 463,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-immortal-s5",
+      "boardSize": 13,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 467,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-immortal-s6",
+      "boardSize": 13,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 615,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-immortal-s7",
+      "boardSize": 13,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 499,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 619,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-double_start-s0",
+      "boardSize": 13,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-double_start-s1",
+      "boardSize": 13,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 936,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-double_start-s2",
+      "boardSize": 13,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 868,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-double_start-s3",
+      "boardSize": 13,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 944,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-double_start-s4",
+      "boardSize": 13,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 824,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-double_start-s5",
+      "boardSize": 13,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 828,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-double_start-s6",
+      "boardSize": 13,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 976,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-double_start-s7",
+      "boardSize": 13,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 860,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 980,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-eightway-s0",
+      "boardSize": 13,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-eightway-s1",
+      "boardSize": 13,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1297,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 2,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-eightway-s2",
+      "boardSize": 13,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1229,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 4
+    },
+    {
+      "id": "d4-n13-eightway-s3",
+      "boardSize": 13,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1305,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 10,
+      "expectedSemanticY": 8
+    },
+    {
+      "id": "d4-n13-eightway-s4",
+      "boardSize": 13,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1185,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-eightway-s5",
+      "boardSize": 13,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1189,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 2
+    },
+    {
+      "id": "d4-n13-eightway-s6",
+      "boardSize": 13,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1337,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 4,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n13-eightway-s7",
+      "boardSize": 13,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1221,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1341,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 8,
+      "expectedSemanticY": 10
+    },
+    {
+      "id": "d4-n19-normal-s0",
+      "boardSize": 19,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-normal-s1",
+      "boardSize": 19,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 212,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-normal-s2",
+      "boardSize": 19,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 148,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-normal-s3",
+      "boardSize": 19,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 224,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-normal-s4",
+      "boardSize": 19,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 64,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-normal-s5",
+      "boardSize": 19,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 68,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-normal-s6",
+      "boardSize": 19,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 292,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-normal-s7",
+      "boardSize": 19,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 136,
+        "kind": "NORMAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 296,
+        "kind": "NORMAL"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-immortal-s0",
+      "boardSize": 19,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-immortal-s1",
+      "boardSize": 19,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 573,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-immortal-s2",
+      "boardSize": 19,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 509,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-immortal-s3",
+      "boardSize": 19,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 585,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-immortal-s4",
+      "boardSize": 19,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 425,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-immortal-s5",
+      "boardSize": 19,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 429,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-immortal-s6",
+      "boardSize": 19,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 653,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-immortal-s7",
+      "boardSize": 19,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 497,
+        "kind": "IMMORTAL"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 657,
+        "kind": "IMMORTAL"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-double_start-s0",
+      "boardSize": 19,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-double_start-s1",
+      "boardSize": 19,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 934,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-double_start-s2",
+      "boardSize": 19,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 870,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-double_start-s3",
+      "boardSize": 19,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 946,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-double_start-s4",
+      "boardSize": 19,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 786,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-double_start-s5",
+      "boardSize": 19,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 790,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-double_start-s6",
+      "boardSize": 19,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1014,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-double_start-s7",
+      "boardSize": 19,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 858,
+        "kind": "DOUBLE_START"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1018,
+        "kind": "DOUBLE_START"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-eightway-s0",
+      "boardSize": 19,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-eightway-s1",
+      "boardSize": 19,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1295,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 3,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-eightway-s2",
+      "boardSize": 19,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1231,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 7
+    },
+    {
+      "id": "d4-n19-eightway-s3",
+      "boardSize": 19,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1307,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 15,
+      "expectedSemanticY": 11
+    },
+    {
+      "id": "d4-n19-eightway-s4",
+      "boardSize": 19,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1147,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-eightway-s5",
+      "boardSize": 19,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1151,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 3
+    },
+    {
+      "id": "d4-n19-eightway-s6",
+      "boardSize": 19,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1375,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 7,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-n19-eightway-s7",
+      "boardSize": 19,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1219,
+        "kind": "EIGHTWAY"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1379,
+        "kind": "EIGHTWAY"
+      },
+      "expectedSemanticX": 11,
+      "expectedSemanticY": 15
+    },
+    {
+      "id": "d4-pass-s0",
+      "boardSize": 19,
+      "symmetryId": 0,
+      "inverseSymmetryId": 0,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s1",
+      "boardSize": 19,
+      "symmetryId": 1,
+      "inverseSymmetryId": 1,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s2",
+      "boardSize": 19,
+      "symmetryId": 2,
+      "inverseSymmetryId": 2,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s3",
+      "boardSize": 19,
+      "symmetryId": 3,
+      "inverseSymmetryId": 3,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s4",
+      "boardSize": 19,
+      "symmetryId": 4,
+      "inverseSymmetryId": 4,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s5",
+      "boardSize": 19,
+      "symmetryId": 5,
+      "inverseSymmetryId": 6,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s6",
+      "boardSize": 19,
+      "symmetryId": 6,
+      "inverseSymmetryId": 5,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    },
+    {
+      "id": "d4-pass-s7",
+      "boardSize": 19,
+      "symmetryId": 7,
+      "inverseSymmetryId": 7,
+      "inputAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedAction": {
+        "schemaVersion": "action-v1",
+        "actionId": 1444,
+        "kind": "PASS"
+      },
+      "expectedSemanticX": null,
+      "expectedSemanticY": null
+    }
+  ],
+  "exhaustiveD4": {
+    "recordCountPerSymmetry": 1445,
+    "inputOrder": "ACTION_ID_ASCENDING",
+    "output": "TRANSFORMED_ACTION_ID_ARRAY",
+    "perSymmetryCanonicalArraySha256": {
+      "0": "ed2ea6c394213ea59995c095c19dfd87c4ae6a3f383862d817216ab7fb0a051b",
+      "1": "efc2a29839b1b0afcc51b15501687b08c4c9e4884b6ee1eb762149b614bf9416",
+      "2": "42de68a230c0c37529b1a45749acac04aab652bc8f0fb9b1cac2232a65f9cd9d",
+      "3": "56b53e78bda0f898508da3d8f87ca6c4e79b430af4d3d3e82426e35d45097177",
+      "4": "d236ca116f2753501f7a86c6ad4cb15080f78fd92d918fb6d06c59563ac73dbc",
+      "5": "7878af9164f174afb6a2d647180f77bd7bbfafc2378de44db32ffc7879da2acf",
+      "6": "82a927c2af774b0fd8086acda9fe37b079debc4ee1d471bb498eb801d993391c",
+      "7": "e0ba87acb3c4ddbcd4b7cf905cad4cd2ac92edab0fa24c3bcb7196c82d82ffba"
+    }
+  }
+}

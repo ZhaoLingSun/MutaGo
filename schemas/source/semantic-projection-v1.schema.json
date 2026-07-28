@@ -1,0 +1,1173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semantic-projection-v1.schema.json",
+  "title": "MutaGo Semantic Projection V1",
+  "description": "Language-neutral exact comparison projection for a stable Collapse Go state and its immediately preceding candidate transition.",
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonnegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "asciiId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F]"
+      }
+    },
+    "color": {
+      "enum": [
+        "BLACK",
+        "WHITE"
+      ]
+    },
+    "nullableColor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/color"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "pointList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 360
+      },
+      "description": "Strictly increasing board-local row-major points p=boardSize*y+x; semantic validation constrains p to 0..boardSize^2-1."
+    },
+    "occupancy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "black",
+        "white"
+      ],
+      "properties": {
+        "black": {
+          "$ref": "#/$defs/pointList"
+        },
+        "white": {
+          "$ref": "#/$defs/pointList"
+        }
+      }
+    },
+    "quotaVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "IMMORTAL",
+        "DOUBLE_START",
+        "EIGHTWAY"
+      ],
+      "properties": {
+        "IMMORTAL": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "DOUBLE_START": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "EIGHTWAY": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    },
+    "playerQuotas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "BLACK",
+        "WHITE"
+      ],
+      "properties": {
+        "BLACK": {
+          "$ref": "#/$defs/quotaVector"
+        },
+        "WHITE": {
+          "$ref": "#/$defs/quotaVector"
+        }
+      }
+    },
+    "stone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "point",
+        "color",
+        "originActionNumber",
+        "sourceId",
+        "originKind",
+        "specialEventId"
+      ],
+      "properties": {
+        "point": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "originKind": {
+          "enum": [
+            "NORMAL",
+            "IMMORTAL",
+            "DOUBLE_START",
+            "EIGHTWAY"
+          ]
+        },
+        "specialEventId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/asciiId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "originActionNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "ledgerEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "logicalOrder",
+        "owner",
+        "kind",
+        "sourcePoint",
+        "sourceStoneId",
+        "abilityState",
+        "stoneState",
+        "settlementState",
+        "tombstone"
+      ],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "logicalOrder": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "owner": {
+          "$ref": "#/$defs/color"
+        },
+        "kind": {
+          "enum": [
+            "IMMORTAL",
+            "DOUBLE_START",
+            "EIGHTWAY"
+          ]
+        },
+        "sourcePoint": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "sourceStoneId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "abilityState": {
+          "enum": [
+            "ARMED",
+            "CONSUMED",
+            "INACTIVE"
+          ]
+        },
+        "stoneState": {
+          "enum": [
+            "ON_BOARD",
+            "CAPTURED"
+          ]
+        },
+        "settlementState": {
+          "enum": [
+            "PENDING",
+            "SETTLED"
+          ]
+        },
+        "tombstone": {
+          "type": "boolean"
+        }
+      }
+    },
+    "pendingDouble": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "owner",
+            "eventId",
+            "startActionNumber"
+          ],
+          "properties": {
+            "owner": {
+              "$ref": "#/$defs/color"
+            },
+            "eventId": {
+              "$ref": "#/$defs/asciiId"
+            },
+            "startActionNumber": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        }
+      ]
+    },
+    "scoreRational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "numerator",
+        "denominator"
+      ],
+      "properties": {
+        "numerator": {
+          "$ref": "#/$defs/safeInteger"
+        },
+        "denominator": {
+          "const": 2
+        }
+      }
+    },
+    "scoreResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "black",
+        "white",
+        "margin"
+      ],
+      "properties": {
+        "black": {
+          "$ref": "#/$defs/scoreRational"
+        },
+        "white": {
+          "$ref": "#/$defs/scoreRational"
+        },
+        "margin": {
+          "$ref": "#/$defs/scoreRational"
+        }
+      }
+    },
+    "terminalState": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ended"
+          ],
+          "properties": {
+            "ended": {
+              "const": false
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ended",
+            "reason",
+            "winner",
+            "loser",
+            "score"
+          ],
+          "properties": {
+            "ended": {
+              "const": true
+            },
+            "reason": {
+              "const": "SCORE"
+            },
+            "winner": {
+              "$ref": "#/$defs/color"
+            },
+            "loser": {
+              "$ref": "#/$defs/color"
+            },
+            "score": {
+              "$ref": "#/$defs/scoreResult"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ended",
+            "reason",
+            "winner",
+            "loser",
+            "score"
+          ],
+          "properties": {
+            "ended": {
+              "const": true
+            },
+            "reason": {
+              "enum": [
+                "RESIGNATION",
+                "TIMEOUT"
+              ]
+            },
+            "winner": {
+              "$ref": "#/$defs/color"
+            },
+            "loser": {
+              "$ref": "#/$defs/color"
+            },
+            "score": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    },
+    "atomicEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "actionNumber",
+        "actor",
+        "action",
+        "captured",
+        "stableOccupancy",
+        "pskHistoryIndex"
+      ],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "actionNumber": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "actor": {
+          "$ref": "#/$defs/color"
+        },
+        "action": {
+          "$ref": "action-v1.schema.json"
+        },
+        "captured": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "stableOccupancy": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "pskHistoryIndex": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "properties": {
+                  "kind": {
+                    "const": "PASS"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "captured": {
+                "const": {
+                  "black": [],
+                  "white": []
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "settlementStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stepIndex",
+        "ledgerEventId",
+        "abilityDeactivated",
+        "noOp",
+        "removalBatches",
+        "stableOccupancy",
+        "pskHistoryIndex"
+      ],
+      "properties": {
+        "stepIndex": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "ledgerEventId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "abilityDeactivated": {
+          "type": "boolean"
+        },
+        "noOp": {
+          "type": "boolean"
+        },
+        "removalBatches": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/occupancy"
+          }
+        },
+        "stableOccupancy": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "pskHistoryIndex": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    },
+    "settlementTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "triggerReason",
+        "handoffActor",
+        "steps"
+      ],
+      "properties": {
+        "triggerReason": {
+          "enum": [
+            "THRESHOLD",
+            "PRE_THRESHOLD_TWO_PASSES"
+          ]
+        },
+        "handoffActor": {
+          "$ref": "#/$defs/color"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/settlementStep"
+          }
+        }
+      }
+    },
+    "terminalEvent": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scoredTerminalEvent"
+        },
+        {
+          "$ref": "#/$defs/immediateTerminalEvent"
+        }
+      ]
+    },
+    "acceptedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "transitionKind",
+        "errorCode",
+        "atomicEvent",
+        "settlement",
+        "terminalEvent"
+      ],
+      "properties": {
+        "accepted": {
+          "const": true
+        },
+        "errorCode": {
+          "type": "null"
+        },
+        "atomicEvent": {
+          "$ref": "#/$defs/atomicEvent"
+        },
+        "settlement": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/settlementTrace"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "terminalEvent": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/scoredTerminalEvent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transitionKind": {
+          "const": "ATOMIC_ACTION"
+        }
+      },
+      "not": {
+        "properties": {
+          "settlement": {
+            "type": "object"
+          },
+          "terminalEvent": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "settlement",
+          "terminalEvent"
+        ]
+      }
+    },
+    "rejectedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "transitionKind",
+        "errorCode",
+        "atomicEvent",
+        "settlement",
+        "terminalEvent"
+      ],
+      "properties": {
+        "accepted": {
+          "const": false
+        },
+        "errorCode": {
+          "enum": [
+            "WRONG_ACTOR",
+            "INVALID_PHASE",
+            "TERMINAL_STATE",
+            "POINT_OFF_BOARD",
+            "POINT_OCCUPIED",
+            "QUOTA_EXHAUSTED",
+            "DOUBLE_CONTINUATION_REQUIRED",
+            "DOUBLE_CONTINUATION_KIND_FORBIDDEN",
+            "DOUBLE_THRESHOLD",
+            "SUICIDE",
+            "POSITIONAL_SUPERKO",
+            "INTERNAL_INVARIANT"
+          ]
+        },
+        "atomicEvent": {
+          "type": "null"
+        },
+        "settlement": {
+          "type": "null"
+        },
+        "terminalEvent": {
+          "type": "null"
+        },
+        "transitionKind": {
+          "const": "REJECTED"
+        }
+      }
+    },
+    "transition": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/acceptedTransition"
+        },
+        {
+          "$ref": "#/$defs/acceptedImmediateTerminalTransition"
+        },
+        {
+          "$ref": "#/$defs/rejectedTransition"
+        }
+      ]
+    },
+    "legalActionRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first",
+        "last"
+      ],
+      "properties": {
+        "first": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1444
+        },
+        "last": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1444
+        }
+      }
+    },
+    "debugGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "color",
+        "stones",
+        "liberties",
+        "protected",
+        "immortalAnchors",
+        "eightwayAnchors"
+      ],
+      "properties": {
+        "color": {
+          "$ref": "#/$defs/color"
+        },
+        "stones": {
+          "$ref": "#/$defs/pointList"
+        },
+        "liberties": {
+          "$ref": "#/$defs/pointList"
+        },
+        "protected": {
+          "type": "boolean"
+        },
+        "immortalAnchors": {
+          "$ref": "#/$defs/pointList"
+        },
+        "eightwayAnchors": {
+          "$ref": "#/$defs/pointList"
+        }
+      }
+    },
+    "acceptedImmediateTerminalTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "transitionKind",
+        "errorCode",
+        "atomicEvent",
+        "settlement",
+        "terminalEvent"
+      ],
+      "properties": {
+        "accepted": {
+          "const": true
+        },
+        "transitionKind": {
+          "const": "IMMEDIATE_TERMINAL"
+        },
+        "errorCode": {
+          "type": "null"
+        },
+        "atomicEvent": {
+          "type": "null"
+        },
+        "settlement": {
+          "type": "null"
+        },
+        "terminalEvent": {
+          "$ref": "#/$defs/immediateTerminalEvent"
+        }
+      }
+    },
+    "scoredTerminalEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "reason",
+        "winner",
+        "loser",
+        "stableOccupancy",
+        "pskHistoryIndex"
+      ],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "reason": {
+          "const": "SCORE"
+        },
+        "winner": {
+          "$ref": "#/$defs/color"
+        },
+        "loser": {
+          "$ref": "#/$defs/color"
+        },
+        "stableOccupancy": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "pskHistoryIndex": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    },
+    "immediateTerminalEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eventId",
+        "reason",
+        "winner",
+        "loser",
+        "stableOccupancy",
+        "pskHistoryIndex"
+      ],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "reason": {
+          "enum": [
+            "RESIGNATION",
+            "TIMEOUT"
+          ]
+        },
+        "winner": {
+          "$ref": "#/$defs/color"
+        },
+        "loser": {
+          "$ref": "#/$defs/color"
+        },
+        "stableOccupancy": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "pskHistoryIndex": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "ruleset",
+    "pointEncoding",
+    "fixtureId",
+    "stepIndex",
+    "transition",
+    "state",
+    "derived",
+    "debug"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "semantic-projection-v1"
+    },
+    "ruleset": {
+      "$ref": "ruleset-descriptor-v1.schema.json#/$defs/rulesetIdentity"
+    },
+    "pointEncoding": {
+      "const": "BOARD_LOCAL_ROW_MAJOR"
+    },
+    "fixtureId": {
+      "$ref": "#/$defs/asciiId"
+    },
+    "stepIndex": {
+      "$ref": "#/$defs/nonnegativeSafeInteger"
+    },
+    "transition": {
+      "$ref": "#/$defs/transition"
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "revision",
+        "logPosition",
+        "boardSize",
+        "threshold",
+        "occupancy",
+        "stones",
+        "actor",
+        "phase",
+        "atomicActionCount",
+        "consecutivePasses",
+        "settlementCompleted",
+        "pendingDouble",
+        "initialQuotas",
+        "remainingQuotas",
+        "usedQuotas",
+        "expiredQuotas",
+        "ledger",
+        "pskHistory",
+        "terminal"
+      ],
+      "properties": {
+        "revision": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "logPosition": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "boardSize": {
+          "enum": [
+            9,
+            13,
+            19
+          ]
+        },
+        "threshold": {
+          "enum": [
+            34,
+            70,
+            150
+          ]
+        },
+        "occupancy": {
+          "$ref": "#/$defs/occupancy"
+        },
+        "stones": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stone"
+          }
+        },
+        "actor": {
+          "$ref": "#/$defs/nullableColor"
+        },
+        "phase": {
+          "enum": [
+            "COLLAPSE_PLAY",
+            "ORDINARY_PLAY",
+            "TERMINAL"
+          ]
+        },
+        "atomicActionCount": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "consecutivePasses": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "settlementCompleted": {
+          "type": "boolean"
+        },
+        "pendingDouble": {
+          "$ref": "#/$defs/pendingDouble"
+        },
+        "initialQuotas": {
+          "$ref": "#/$defs/playerQuotas"
+        },
+        "remainingQuotas": {
+          "$ref": "#/$defs/playerQuotas"
+        },
+        "usedQuotas": {
+          "$ref": "#/$defs/playerQuotas"
+        },
+        "expiredQuotas": {
+          "$ref": "#/$defs/playerQuotas"
+        },
+        "ledger": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ledgerEntry"
+          }
+        },
+        "pskHistory": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/occupancy"
+          },
+          "prefixItems": [
+            {
+              "const": {
+                "black": [],
+                "white": []
+              }
+            }
+          ]
+        },
+        "terminal": {
+          "$ref": "#/$defs/terminalState"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 9
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 34
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 13
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 70
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 19
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          },
+          "then": {
+            "properties": {
+              "threshold": {
+                "const": 150
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 9
+              },
+              "phase": {
+                "const": "COLLAPSE_PLAY"
+              }
+            },
+            "required": [
+              "boardSize",
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "atomicActionCount": {
+                "maximum": 33
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 13
+              },
+              "phase": {
+                "const": "COLLAPSE_PLAY"
+              }
+            },
+            "required": [
+              "boardSize",
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "atomicActionCount": {
+                "maximum": 69
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "boardSize": {
+                "const": 19
+              },
+              "phase": {
+                "const": "COLLAPSE_PLAY"
+              }
+            },
+            "required": [
+              "boardSize",
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "atomicActionCount": {
+                "maximum": 149
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "COLLAPSE_PLAY"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "$ref": "#/$defs/color"
+              },
+              "settlementCompleted": {
+                "const": false
+              },
+              "terminal": {
+                "properties": {
+                  "ended": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "ended"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "ORDINARY_PLAY"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "$ref": "#/$defs/color"
+              },
+              "settlementCompleted": {
+                "const": true
+              },
+              "terminal": {
+                "properties": {
+                  "ended": {
+                    "const": false
+                  }
+                },
+                "required": [
+                  "ended"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "TERMINAL"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "type": "null"
+              },
+              "terminal": {
+                "properties": {
+                  "ended": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "ended"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "legalActionRanges"
+      ],
+      "properties": {
+        "legalActionRanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/legalActionRange"
+          }
+        }
+      }
+    },
+    "debug": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "groups"
+      ],
+      "properties": {
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/debugGroup"
+          }
+        }
+      }
+    }
+  }
+}

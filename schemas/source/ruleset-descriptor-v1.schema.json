@@ -1,0 +1,987 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ruleset-descriptor-v1.schema.json",
+  "title": "MutaGo Collapse Go Ruleset Descriptor V1",
+  "description": "Closed executable semantic descriptor profile for mutago.collapse-go. Board selection and complete initial quota vectors are descriptor-bound parameters; all other v1 semantics are frozen by constants.",
+  "$defs": {
+    "safeInteger": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "nonnegativeSafeInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "lowercaseSha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "asciiId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F]"
+      }
+    },
+    "quotaVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "IMMORTAL",
+        "DOUBLE_START",
+        "EIGHTWAY"
+      ],
+      "properties": {
+        "IMMORTAL": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "DOUBLE_START": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        },
+        "EIGHTWAY": {
+          "$ref": "#/$defs/nonnegativeSafeInteger"
+        }
+      }
+    },
+    "playerQuotas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "BLACK",
+        "WHITE"
+      ],
+      "properties": {
+        "BLACK": {
+          "$ref": "#/$defs/quotaVector"
+        },
+        "WHITE": {
+          "$ref": "#/$defs/quotaVector"
+        }
+      }
+    },
+    "rulesetIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rulesetId",
+        "semanticVersion",
+        "descriptorSha256"
+      ],
+      "properties": {
+        "rulesetId": {
+          "const": "mutago.collapse-go"
+        },
+        "semanticVersion": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "descriptorSha256": {
+          "$ref": "#/$defs/lowercaseSha256"
+        }
+      }
+    },
+    "publicIdentity": {
+      "const": {
+        "rulesetId": "mutago.collapse-go",
+        "semanticVersion": "0.1.0-draft",
+        "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899"
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "descriptorSchema",
+    "identity",
+    "canonicalization",
+    "versions",
+    "initialState",
+    "boardPolicy",
+    "actionSpace",
+    "stateMachine",
+    "actionCounting",
+    "quotas",
+    "topology",
+    "abilities",
+    "eventModel",
+    "placementTransaction",
+    "positionalSuperko",
+    "pass",
+    "settlement",
+    "ordinaryPlay",
+    "deadStoneHandling",
+    "scoring",
+    "termination"
+  ],
+  "properties": {
+    "descriptorSchema": {
+      "const": "ruleset-descriptor-v1"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rulesetId",
+        "semanticVersion",
+        "publicIdentityComponents",
+        "internalVariantEnumIsPublicIdentity",
+        "repositorySlugIsPublicIdentity",
+        "runtimeModeLabelsArePublicIdentity"
+      ],
+      "properties": {
+        "rulesetId": {
+          "const": "mutago.collapse-go"
+        },
+        "semanticVersion": {
+          "$ref": "#/$defs/asciiId"
+        },
+        "publicIdentityComponents": {
+          "const": [
+            "rulesetId",
+            "semanticVersion",
+            "descriptorSha256"
+          ]
+        },
+        "internalVariantEnumIsPublicIdentity": {
+          "const": false
+        },
+        "repositorySlugIsPublicIdentity": {
+          "const": false
+        },
+        "runtimeModeLabelsArePublicIdentity": {
+          "const": false
+        }
+      }
+    },
+    "canonicalization": {
+      "const": {
+        "profile": "rfc8785-jcs-ascii-safe-integer-v1",
+        "rfc8785Base": true,
+        "characterEncoding": "UTF-8",
+        "objectKeyOrder": "UTF-16-CODE-UNIT-LEXICOGRAPHIC",
+        "stringDomain": "ASCII",
+        "asciiCodePointMaximum": 127,
+        "allowedJsonValueKinds": [
+          "ARRAY",
+          "BOOLEAN",
+          "NULL",
+          "OBJECT",
+          "SAFE_SIGNED_INTEGER",
+          "STRING"
+        ],
+        "safeIntegerMinimum": -9007199254740991,
+        "safeIntegerMaximum": 9007199254740991,
+        "rejectDuplicateKeys": true,
+        "rejectFloatingPoint": true,
+        "rejectNonAsciiStrings": true,
+        "rejectNonAsciiObjectKeys": true,
+        "rejectUnknownDescriptorFields": true,
+        "digestAlgorithm": "SHA-256",
+        "digestEncoding": "LOWERCASE_HEX"
+      }
+    },
+    "versions": {
+      "const": {
+        "rulesetDescriptorSchemaVersion": 1,
+        "actionCodecVersion": 1,
+        "modelVersion": 19,
+        "inputsVersion": 9,
+        "trainingSchemaVersion": 1,
+        "canvasSize": 19,
+        "spatialFeatureCount": 38,
+        "globalFeatureCount": 67,
+        "flatActionCount": 1445
+      }
+    },
+    "initialState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boardSize",
+        "occupancy",
+        "handicap",
+        "firstActor",
+        "phase",
+        "atomicActionCount",
+        "consecutivePasses",
+        "pendingDouble",
+        "initialPSKSeed",
+        "initialPSKEntryIndex"
+      ],
+      "properties": {
+        "boardSize": {
+          "enum": [
+            9,
+            13,
+            19
+          ]
+        },
+        "occupancy": {
+          "const": "EMPTY"
+        },
+        "handicap": {
+          "const": "NONE"
+        },
+        "firstActor": {
+          "const": "BLACK"
+        },
+        "phase": {
+          "const": "COLLAPSE_PLAY"
+        },
+        "atomicActionCount": {
+          "const": 0
+        },
+        "consecutivePasses": {
+          "const": 0
+        },
+        "pendingDouble": {
+          "const": false
+        },
+        "initialPSKSeed": {
+          "const": true
+        },
+        "initialPSKEntryIndex": {
+          "const": 0
+        }
+      }
+    },
+    "boardPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "shape",
+        "selectedBoardSize",
+        "allowedBoardSizes",
+        "otherBoardSizes",
+        "differentSelectedBoardSizeRequiresDifferentDescriptorDigest",
+        "semanticPointEncoding",
+        "centering",
+        "thresholdPolicy",
+        "runtimeClassificationLabelsAffectIdentity"
+      ],
+      "properties": {
+        "shape": {
+          "const": "SQUARE"
+        },
+        "selectedBoardSize": {
+          "enum": [
+            9,
+            13,
+            19
+          ]
+        },
+        "allowedBoardSizes": {
+          "const": [
+            {
+              "size": 9,
+              "canvasOffsetX": 5,
+              "canvasOffsetY": 5,
+              "threshold": 34
+            },
+            {
+              "size": 13,
+              "canvasOffsetX": 3,
+              "canvasOffsetY": 3,
+              "threshold": 70
+            },
+            {
+              "size": 19,
+              "canvasOffsetX": 0,
+              "canvasOffsetY": 0,
+              "threshold": 150
+            }
+          ]
+        },
+        "otherBoardSizes": {
+          "const": "UNSUPPORTED"
+        },
+        "differentSelectedBoardSizeRequiresDifferentDescriptorDigest": {
+          "const": true
+        },
+        "semanticPointEncoding": {
+          "const": {
+            "domain": "BOARD_LOCAL_ROW_MAJOR",
+            "formula": "BOARD_SIZE*Y+X",
+            "minimum": 0,
+            "maximumRule": "BOARD_SIZE*BOARD_SIZE-1",
+            "independentOfCenteredActionCanvas": true,
+            "usedBy": [
+              "OCCUPANCY",
+              "STONES",
+              "CAPTURES",
+              "LIBERTIES",
+              "PSK_HISTORY",
+              "SETTLEMENT_REMOVALS"
+            ]
+          }
+        },
+        "centering": {
+          "const": {
+            "canvasSize": 19,
+            "offsetRule": "(CANVAS_SIZE-BOARD_SIZE)/2",
+            "d4CenterX": 9,
+            "d4CenterY": 9
+          }
+        },
+        "thresholdPolicy": {
+          "const": {
+            "kind": "FLOOR_SCALED_BOARD_AREA",
+            "areaMultiplier": 150,
+            "roundingOffset": 180,
+            "divisor": 361,
+            "evaluateWithExactIntegerArithmetic": true,
+            "triggerAtMostOnce": true
+          }
+        },
+        "runtimeClassificationLabelsAffectIdentity": {
+          "const": false
+        }
+      }
+    },
+    "actionSpace": {
+      "const": {
+        "layout": "KIND_MAJOR",
+        "canvasWidth": 19,
+        "canvasHeight": 19,
+        "canvasPointCount": 361,
+        "kindStride": 361,
+        "pointIndexXCoefficient": 1,
+        "pointIndexYCoefficient": 19,
+        "flatActionCount": 1445,
+        "canonicalJsonEnvelopeFields": [
+          "schemaVersion",
+          "actionId",
+          "kind"
+        ],
+        "coordinatesDerivedUniquelyFromActionId": true,
+        "redundantCoordinateFieldsAllowed": false,
+        "pointFamilies": [
+          {
+            "kind": "NORMAL",
+            "kindCode": 0,
+            "firstActionId": 0,
+            "lastActionId": 360
+          },
+          {
+            "kind": "IMMORTAL",
+            "kindCode": 1,
+            "firstActionId": 361,
+            "lastActionId": 721
+          },
+          {
+            "kind": "DOUBLE_START",
+            "kindCode": 2,
+            "firstActionId": 722,
+            "lastActionId": 1082
+          },
+          {
+            "kind": "EIGHTWAY",
+            "kindCode": 3,
+            "firstActionId": 1083,
+            "lastActionId": 1443
+          }
+        ],
+        "passKind": "PASS",
+        "passActionId": 1444,
+        "smallBoardEncoding": "CENTER_ON_19_BEFORE_ENCODING",
+        "offBoardPointActions": "REJECT",
+        "unknownActionKinds": "REJECT",
+        "nonCanonicalRepresentations": "REJECT",
+        "phaseLegality": {
+          "collapsePlayWithoutPendingDouble": [
+            "NORMAL",
+            "IMMORTAL",
+            "DOUBLE_START",
+            "EIGHTWAY",
+            "PASS"
+          ],
+          "collapsePlayWithPendingDouble": [
+            "NORMAL",
+            "PASS"
+          ],
+          "settlement": [],
+          "ordinaryPlay": [
+            "NORMAL",
+            "PASS"
+          ],
+          "terminal": []
+        },
+        "d4": {
+          "symmetryIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "bit0": "FLIP_Y",
+          "bit1": "FLIP_X",
+          "bit2": "TRANSPOSE",
+          "operationOrder": [
+            "FLIP_X",
+            "FLIP_Y",
+            "TRANSPOSE"
+          ],
+          "inverseSymmetryIds": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            6,
+            5,
+            7
+          ],
+          "preserveActionFamily": true,
+          "passInvariant": true,
+          "preserveCenteredBoardFootprint": true
+        }
+      }
+    },
+    "stateMachine": {
+      "const": {
+        "phases": [
+          "COLLAPSE_PLAY",
+          "SETTLEMENT",
+          "ORDINARY_PLAY",
+          "TERMINAL"
+        ],
+        "settlementExposesPlayerDecision": false,
+        "settlementExposesSearchNode": false,
+        "terminalAcceptsAtomicActions": false,
+        "currentActorIsAuthoritativeState": true,
+        "deriveActorFromParity": false
+      }
+    },
+    "actionCounting": {
+      "const": {
+        "firstActionNumber": 1,
+        "acceptedPointActionIncrement": 1,
+        "acceptedPassIncrement": 1,
+        "doubleStartAndContinuationCountSeparately": true,
+        "settlementStepIncrement": 0,
+        "resignationIncrement": 0,
+        "timeoutIncrement": 0,
+        "illegalRequestIncrement": 0,
+        "specialAbilitiesAvailableFromActionNumber": 1,
+        "continuesAfterSettlement": true
+      }
+    },
+    "quotas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "consumeOnAcceptedSpecialStart",
+        "illegalAttemptConsumes",
+        "captureRefunds",
+        "unusedAtSettlement",
+        "differentCompleteQuotaVectorRequiresDifferentDescriptorDigest",
+        "configurableQuotaDomain",
+        "runtimeExperimentalLabelAffectsIdentity",
+        "initialByPlayer"
+      ],
+      "properties": {
+        "scope": {
+          "const": "PER_PLAYER"
+        },
+        "consumeOnAcceptedSpecialStart": {
+          "const": true
+        },
+        "illegalAttemptConsumes": {
+          "const": false
+        },
+        "captureRefunds": {
+          "const": false
+        },
+        "unusedAtSettlement": {
+          "const": "EXPIRE_WITHOUT_COMPENSATION"
+        },
+        "differentCompleteQuotaVectorRequiresDifferentDescriptorDigest": {
+          "const": true
+        },
+        "configurableQuotaDomain": {
+          "const": "PER_PLAYER_INDEPENDENT_NONNEGATIVE_SAFE_INTEGER_VECTOR"
+        },
+        "runtimeExperimentalLabelAffectsIdentity": {
+          "const": false
+        },
+        "initialByPlayer": {
+          "$ref": "#/$defs/playerQuotas"
+        }
+      }
+    },
+    "topology": {
+      "const": {
+        "ordinaryStoneInterface": "N4",
+        "armedEightwayAnchorInterface": "N8",
+        "sameColorConnection": "UNDIRECTED_IF_EITHER_ENDPOINT_EXPOSES_THE_OTHER",
+        "differentColorsConnect": false,
+        "diagonalShoulderOccupancyCutsEightwayConnection": false,
+        "groupLiberties": "DEDUPLICATED_UNION_OF_EMPTY_INTERFACE_POINTS",
+        "occupiedPointsAreLiberties": false,
+        "protection": "GROUP_CONTAINS_ARMED_IMMORTAL_ANCHOR",
+        "protectionUsesCurrentMixedConnectivity": true,
+        "historicalConnectionGrantsProtection": false,
+        "stableZeroLibertyGroupRequiresProtection": true
+      }
+    },
+    "abilities": {
+      "const": {
+        "IMMORTAL": {
+          "placementUsesUnifiedTransaction": true,
+          "newAnchorActiveDuringTentativeRebuild": true,
+          "protectsCurrentSameColorMixedGroup": true,
+          "zeroLibertyProtectedGroupMayRemainStable": true,
+          "protectionPropagatesAcrossArmedEightwayEdges": true,
+          "onlyFragmentsContainingArmedImmortalRemainProtected": true,
+          "mayEnterOrdinaryTrueEye": true,
+          "exemptFromPositionalSuperko": false,
+          "latestAllowedActionNumber": "T",
+          "settlementDeactivation": "ANCHOR_BECOMES_ORDINARY_THEN_CLOSURE_RUNS"
+        },
+        "DOUBLE_MOVE": {
+          "startActionKind": "DOUBLE_START",
+          "startMustPlaceStone": true,
+          "startUsesUnifiedTransaction": true,
+          "startConsumesQuota": true,
+          "startCreatesConsumedTombstoneLedgerEvent": true,
+          "sourceStoneUsesOrdinaryN4Mechanics": true,
+          "continuationActor": "SAME_AS_START_ACTOR",
+          "continuationCount": 1,
+          "continuationAllowedKinds": [
+            "NORMAL",
+            "PASS"
+          ],
+          "illegalContinuationLeavesObligationUnchanged": true,
+          "startLegalityCondition": "A+2<=T",
+          "latestStartActionNumber": "T-1",
+          "normalContinuationUsesUnifiedTransaction": true,
+          "passContinuationUsesPassTransaction": true,
+          "handoffAfterContinuation": "OPPONENT_OF_START_ACTOR",
+          "settlementPop": "AUDITABLE_NO_OP_WITH_PSK_APPEND"
+        },
+        "EIGHTWAY": {
+          "placementUsesUnifiedTransaction": true,
+          "newAnchorActiveDuringTentativeRebuild": true,
+          "onlyAnchorUsesN8": true,
+          "sameColorDiagonalEdgeIfEitherEndpointIsArmedAnchor": true,
+          "diagonalEdgeIsUndirected": true,
+          "diagonalShouldersDoNotCutEdge": true,
+          "differentColorsNeverConnect": true,
+          "libertiesAreDeduplicated": true,
+          "grantsImmortalProtectionByItself": false,
+          "mayBeCaptured": true,
+          "captureRefundsQuota": false,
+          "latestAllowedActionNumber": "T",
+          "settlementDeactivation": "ANCHOR_REVERTS_TO_N4_THEN_CLOSURE_RUNS"
+        }
+      }
+    },
+    "eventModel": {
+      "const": {
+        "acceptedAtomicActionEventCount": 1,
+        "acceptedSpecialStartLedgerEntryCount": 1,
+        "specialLedgerEntriesAreNeverDeleted": true,
+        "capturedSpecialEventsRemainInLedger": true,
+        "consumedDoubleEventsRemainInLedger": true,
+        "logicalOrder": "UNIQUE_GLOBAL_MONOTONIC_ORDER",
+        "wallClockDeterminesOrder": false,
+        "stableStateBoundary": "AFTER_COMPLETE_ACTION_OR_COMPLETE_SETTLEMENT_EVENT_CLOSURE",
+        "unstableIntermediateStateIsDecisionPoint": false,
+        "acceptedImmediateTerminalEventCount": 1,
+        "scoringTransitionAddsTerminalEventAfterFinalPass": true,
+        "stateRevisionIncrementPerAcceptedCandidate": 1,
+        "committedLogPositionIncrementPerEmittedSemanticEvent": 1,
+        "rejectedCandidateRevisionAndLogIncrement": 0
+      }
+    },
+    "placementTransaction": {
+      "const": {
+        "appliesTo": [
+          "NORMAL",
+          "IMMORTAL",
+          "DOUBLE_START",
+          "EIGHTWAY",
+          "DOUBLE_NORMAL_CONTINUATION"
+        ],
+        "orderedSteps": [
+          "VALIDATE_CANONICAL_ACTION_KIND_AND_CENTERED_BOARD_FOOTPRINT",
+          "VALIDATE_PHASE_ACTOR_CONTINUATION_THRESHOLD_QUOTA_AND_EMPTY_POINT",
+          "PLACE_TENTATIVE_TYPED_STONE",
+          "REBUILD_ALL_GROUPS_LIBERTIES_AND_PROTECTION",
+          "SELECT_ALL_OPPONENT_ZERO_LIBERTY_UNPROTECTED_GROUPS",
+          "REMOVE_SELECTED_OPPONENT_GROUPS_SIMULTANEOUSLY",
+          "REBUILD_ALL_GROUPS_LIBERTIES_AND_PROTECTION",
+          "REQUIRE_NEW_OWN_GROUP_LIBERTY_OR_IMMORTAL_PROTECTION",
+          "REJECT_IF_OCCUPANCY_ALREADY_IN_PSK_HISTORY",
+          "COMMIT_BOARD_CAPTURES_QUOTAS_COUNTERS_EVENT_AND_PSK_ATOMICALLY",
+          "UPDATE_TURN_STATE_THEN_CHECK_SETTLEMENT_TRIGGER"
+        ],
+        "rejectionCodeSelection": "FIRST_APPLICABLE_IN_REJECTION_PRECEDENCE",
+        "rejectionPrecedence": [
+          "POINT_OFF_BOARD",
+          "TERMINAL_STATE",
+          "INVALID_PHASE",
+          "WRONG_ACTOR",
+          "DOUBLE_CONTINUATION_KIND_FORBIDDEN",
+          "DOUBLE_CONTINUATION_REQUIRED",
+          "DOUBLE_THRESHOLD",
+          "QUOTA_EXHAUSTED",
+          "POINT_OCCUPIED",
+          "SUICIDE",
+          "POSITIONAL_SUPERKO",
+          "INTERNAL_INVARIANT"
+        ],
+        "opponentCaptureBatching": "SIMULTANEOUS",
+        "failureRollback": "ALL_CANDIDATE_EFFECTS",
+        "failedActionEmitsRuleEvent": false,
+        "failedActionAppendsPSK": false
+      }
+    },
+    "positionalSuperko": {
+      "const": {
+        "kind": "OCCUPANCY_ONLY_POSITIONAL_SUPERKO",
+        "projectionFields": [
+          "BLACK_OCCUPANCY",
+          "WHITE_OCCUPANCY"
+        ],
+        "excludedFields": [
+          "NEXT_ACTOR",
+          "PHASE",
+          "QUOTAS",
+          "SPECIAL_MARKERS",
+          "ABILITY_STATE",
+          "PENDING_DOUBLE",
+          "ATOMIC_ACTION_COUNT",
+          "CONSECUTIVE_PASSES",
+          "EVENT_IDS",
+          "EVENT_ORDER",
+          "SETTLEMENT_PROGRESS",
+          "CAPTURE_COUNTS"
+        ],
+        "coordinateSymmetryNormalization": false,
+        "initialPSKSeed": true,
+        "initialEmptyOccupancyEntryIndex": 0,
+        "historyIsOrdered": true,
+        "historyPreservesDuplicates": true,
+        "playerPointActionsCheckRepetitionBeforeCommit": true,
+        "passChecksRepetition": false,
+        "settlementChecksRepetition": false,
+        "appendAfterEveryAcceptedAtomicActionStableState": true,
+        "appendAfterEverySettlementEventStableClosure": true,
+        "appendAfterStableTerminalEventWhenPresent": true,
+        "appendUnstableRebuildOrCaptureIntermediate": false,
+        "settlementGeneratedRepetitionIsAllowed": true,
+        "allAppendedOccupanciesConstrainFuturePointActions": true
+      }
+    },
+    "pass": {
+      "const": {
+        "changesBoard": false,
+        "runsCapture": false,
+        "runsSuicideCheck": false,
+        "runsPositionalSuperkoRejection": false,
+        "incrementsAtomicActionCount": true,
+        "incrementsConsecutivePasses": true,
+        "emitsAtomicActionEvent": true,
+        "appendsUnchangedStableOccupancy": true,
+        "completesTurn": true,
+        "nextActor": "OPPONENT",
+        "doubleContinuationClearsPendingDouble": true,
+        "doubleContinuationHandoffActor": "OPPONENT",
+        "pointActionResetsConsecutivePasses": true,
+        "collapsePlayTwoPassesBeforeThreshold": "TRIGGER_SETTLEMENT_NOT_SCORING",
+        "ordinaryPlayTwoPasses": "TERMINATE_AND_SCORE"
+      }
+    },
+    "settlement": {
+      "const": {
+        "occursAtMostOnce": true,
+        "triggerCheckTiming": "AFTER_FULL_ATOMIC_ACTION_COMMIT",
+        "triggerPrecedence": [
+          "A_EQUALS_T",
+          "A_LESS_THAN_T_AND_CONSECUTIVE_PASSES_EQUALS_2"
+        ],
+        "triggerReasons": [
+          "THRESHOLD",
+          "PRE_THRESHOLD_TWO_PASSES"
+        ],
+        "thresholdActionIsCommittedBeforeSettlement": true,
+        "cannotInterruptPendingDouble": true,
+        "handoffActor": "OPPONENT_AFTER_TRIGGERING_TURN_COMPLETES",
+        "entryResetsConsecutivePasses": true,
+        "entryExpiresUnusedQuotasWithoutCompensation": true,
+        "queueContents": "ALL_USED_SPECIAL_EVENTS_ACROSS_BOTH_PLAYERS",
+        "queueOrder": "NEWEST_TO_OLDEST_GLOBAL_LOGICAL_ORDER",
+        "capturedEventsRemainQueueEntries": true,
+        "consumedDoubleEventsRemainQueueEntries": true,
+        "emptyQueueEmitsSyntheticStep": false,
+        "perEventOrderedSteps": [
+          "DEACTIVATE_EXACTLY_ONE_LEDGER_EVENT",
+          "REBUILD_ALL_GROUPS_LIBERTIES_AND_PROTECTION",
+          "SELECT_ALL_ZERO_LIBERTY_UNPROTECTED_GROUPS_OF_BOTH_COLORS",
+          "REMOVE_SELECTED_GROUPS_SIMULTANEOUSLY",
+          "REPEAT_REBUILD_SELECT_AND_REMOVE_UNTIL_EMPTY",
+          "REBUILD_WHOLE_BOARD_ONCE_MORE",
+          "EMIT_SETTLEMENT_STEP_TRACE",
+          "APPEND_STABLE_OCCUPANCY_TO_PSK"
+        ],
+        "closureRemovalIncludesBothColors": true,
+        "closureRemovalBatching": "SIMULTANEOUS_PER_ITERATION",
+        "closureRunsToDeterministicFixedPoint": true,
+        "tombstoneOrCapturedEventPop": "AUDITABLE_NO_OP_WITH_PSK_APPEND",
+        "noOpStillAppendsStableOccupancy": true,
+        "positionalSuperkoCanRejectStep": false,
+        "incrementsAtomicActionCount": false,
+        "allowsPlayerOrSearchInterleaving": false,
+        "exitPhase": "ORDINARY_PLAY",
+        "exitActor": "SAVED_HANDOFF_ACTOR",
+        "remainingSpecialStonesBecomeOrdinary": true,
+        "ledgerRemainsAuditable": true,
+        "canTriggerAgain": false
+      }
+    },
+    "ordinaryPlay": {
+      "const": {
+        "allowedActionKinds": [
+          "NORMAL",
+          "PASS"
+        ],
+        "stoneInterface": "N4",
+        "immortalProtectionExists": false,
+        "eightwayConnectionExists": false,
+        "fullPSKHistoryContinues": true,
+        "atomicActionCountContinues": true,
+        "thresholdCheckedAgain": false,
+        "entryConsecutivePasses": 0,
+        "newConsecutivePassesRequiredForTermination": 2
+      }
+    },
+    "deadStoneHandling": {
+      "const": {
+        "mvpShortcutStatus": "DEFERRED",
+        "agreedDeadStoneRemovalShortcutEnabled": false,
+        "deadStoneDisputeProtocolEnabled": false,
+        "mvpResolution": "CONTINUE_ORDINARY_PLAY_UNTIL_TWO_PASSES_THEN_SCORE_CURRENT_STABLE_BOARD",
+        "deadStoneRemovalAddsCapturePoints": false
+      }
+    },
+    "scoring": {
+      "const": {
+        "method": "CHINESE_AREA",
+        "connectivity": "N4",
+        "stoneValuePoints": 1,
+        "emptyRegionForBlack": "ADJACENT_TO_BLACK_AND_NOT_WHITE",
+        "emptyRegionForWhite": "ADJACENT_TO_WHITE_AND_NOT_BLACK",
+        "emptyRegionAdjacentToBoth": "NEUTRAL",
+        "emptyRegionAdjacentToNeither": "NEUTRAL",
+        "historicalCapturesAddPoints": false,
+        "specialStoneHistoryChangesPointValue": false,
+        "komi": {
+          "recipient": "WHITE",
+          "numerator": 15,
+          "denominator": 2
+        },
+        "winnerComparison": "BLACK_AREA_MINUS_WHITE_AREA_WITH_KOMI",
+        "scoreDenominator": 2,
+        "blackScoreNumeratorFormula": "2*(BLACK_STONES+BLACK_EMPTY_AREA)",
+        "whiteScoreNumeratorFormula": "2*(WHITE_STONES+WHITE_EMPTY_AREA)+15",
+        "marginNumeratorFormula": "ABS(BLACK_SCORE_NUMERATOR-WHITE_SCORE_NUMERATOR)",
+        "tiePossible": false
+      }
+    },
+    "termination": {
+      "const": {
+        "ordinaryPlayTwoConsecutivePasses": {
+          "enabled": true,
+          "requiresPassesAfterSettlement": true,
+          "result": "SCORE_CURRENT_STABLE_BOARD",
+          "emitsTerminalEvent": true,
+          "terminalEventHasStablePostState": true,
+          "appendsStableOccupancyToPSK": true
+        },
+        "resignation": {
+          "candidateIntent": "RESIGNATION",
+          "acceptedDuringPendingDouble": true,
+          "result": "RESIGNING_PLAYER_LOSES_IMMEDIATELY",
+          "runsSettlement": false,
+          "runsScoring": false,
+          "countsAsAtomicAction": false,
+          "preservesPendingDoubleAuditState": true,
+          "emitsTerminalEvent": true,
+          "terminalEventHasStablePostState": true,
+          "appendsStableOccupancyToPSK": true,
+          "acceptedAtExposedDecisionBoundaries": [
+            "COLLAPSE_PLAY",
+            "ORDINARY_PLAY"
+          ],
+          "settlementIntentAcceptanceBoundary": "NONE_SETTLEMENT_IS_ATOMIC_AND_UNEXPOSED",
+          "preservedStateFields": [
+            "BOARD_OCCUPANCY",
+            "STONES_AND_SOURCE_IDENTITIES",
+            "ATOMIC_ACTION_COUNT",
+            "CONSECUTIVE_PASSES",
+            "SETTLEMENT_COMPLETED",
+            "PENDING_DOUBLE",
+            "QUOTAS",
+            "SPECIAL_EVENT_LEDGER"
+          ],
+          "changedStateFields": [
+            "PHASE",
+            "CURRENT_ACTOR",
+            "TERMINAL_RESULT",
+            "STATE_REVISION",
+            "LOG_POSITION",
+            "PSK_HISTORY"
+          ]
+        },
+        "timeout": {
+          "candidateIntent": "TIMEOUT",
+          "acceptedDuringPendingDouble": true,
+          "result": "TIMED_OUT_PLAYER_LOSES_IMMEDIATELY",
+          "runsSettlement": false,
+          "runsScoring": false,
+          "countsAsAtomicAction": false,
+          "preservesPendingDoubleAuditState": true,
+          "emitsTerminalEvent": true,
+          "terminalEventHasStablePostState": true,
+          "appendsStableOccupancyToPSK": true,
+          "acceptedAtExposedDecisionBoundaries": [
+            "COLLAPSE_PLAY",
+            "ORDINARY_PLAY"
+          ],
+          "settlementIntentAcceptanceBoundary": "NONE_SETTLEMENT_IS_ATOMIC_AND_UNEXPOSED",
+          "preservedStateFields": [
+            "BOARD_OCCUPANCY",
+            "STONES_AND_SOURCE_IDENTITIES",
+            "ATOMIC_ACTION_COUNT",
+            "CONSECUTIVE_PASSES",
+            "SETTLEMENT_COMPLETED",
+            "PENDING_DOUBLE",
+            "QUOTAS",
+            "SPECIAL_EVENT_LEDGER"
+          ],
+          "changedStateFields": [
+            "PHASE",
+            "CURRENT_ACTOR",
+            "TERMINAL_RESULT",
+            "STATE_REVISION",
+            "LOG_POSITION",
+            "PSK_HISTORY"
+          ]
+        },
+        "machinePlayFiniteUnderPSKAndTwoPassRule": true
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "initialState": {
+            "properties": {
+              "boardSize": {
+                "const": 9
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          }
+        },
+        "required": [
+          "initialState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "boardPolicy": {
+            "properties": {
+              "selectedBoardSize": {
+                "const": 9
+              }
+            },
+            "required": [
+              "selectedBoardSize"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialState": {
+            "properties": {
+              "boardSize": {
+                "const": 13
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          }
+        },
+        "required": [
+          "initialState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "boardPolicy": {
+            "properties": {
+              "selectedBoardSize": {
+                "const": 13
+              }
+            },
+            "required": [
+              "selectedBoardSize"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "initialState": {
+            "properties": {
+              "boardSize": {
+                "const": 19
+              }
+            },
+            "required": [
+              "boardSize"
+            ]
+          }
+        },
+        "required": [
+          "initialState"
+        ]
+      },
+      "then": {
+        "properties": {
+          "boardPolicy": {
+            "properties": {
+              "selectedBoardSize": {
+                "const": 19
+              }
+            },
+            "required": [
+              "selectedBoardSize"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
