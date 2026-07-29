@@ -278,6 +278,8 @@ add_executable(katago
   game/boardhistory.cpp
   game/graphhash.cpp
   game/gameaction.cpp
+  game/collapsegoposition.cpp
+  game/collapsegotopology.cpp
   game/positionalsuperko.cpp
   game/collapsegostate.cpp
   game/collapsegoreducer.cpp
@@ -330,6 +332,7 @@ add_executable(katago
   tests/testboardbasic.cpp
   tests/testbook.cpp
   tests/testcollapsecontracts.cpp
+  tests/testcollapsetopology.cpp
   tests/testcollapsereducer.cpp
   tests/testcommon.cpp
   tests/testconfig.cpp
@@ -675,6 +678,8 @@ add_executable(mutago-collapse-slice-probe EXCLUDE_FROM_ALL
   core/timer.cpp
   game/board.cpp
   game/gameaction.cpp
+  game/collapsegoposition.cpp
+  game/collapsegotopology.cpp
   game/positionalsuperko.cpp
   game/collapsegostate.cpp
   game/collapsegoreducer.cpp

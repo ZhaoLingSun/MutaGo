@@ -1,8 +1,73 @@
 #include "../game/collapsegoreducer.h"
 
-#include <array>
+#include <algorithm>
+
+#include "../game/collapsegotopology.h"
 
 using namespace std;
+
+namespace {
+
+template<typename Func>
+void forEachN4Point(int boardSize, int point, const Func& func) {
+  const int x = point % boardSize;
+  const int y = point / boardSize;
+  if(y > 0)
+    func(point - boardSize);
+  if(x > 0)
+    func(point - 1);
+  if(x + 1 < boardSize)
+    func(point + 1);
+  if(y + 1 < boardSize)
+    func(point + boardSize);
+}
+
+void expireRemainingQuotas(CollapseGoQuotas& remaining, CollapseGoQuotas& expired) {
+  expired.immortal += remaining.immortal;
+  expired.doubleMove += remaining.doubleMove;
+  expired.eightway += remaining.eightway;
+  remaining = CollapseGoQuotas();
+}
+
+CollapseGoApplyError simulateN4Placement(
+  const CollapseGoState& state,
+  int point,
+  Player actor,
+  GameActionKind kind,
+  CollapseGoPosition& tentativePosition,
+  vector<int>& capturedPoints
+) {
+  optional<int64_t> specialLink;
+  if(kind != GameActionKind::NORMAL)
+    specialLink = state.getAtomicActionCount() + 1;
+  CollapseGoStoneSource source(state.getAtomicActionCount() + 1,kind,specialLink);
+  tentativePosition.placeStone(point,actor,source);
+
+  CollapseGoTopology firstTopology = CollapseGoTopology::fullScanN4(tentativePosition);
+  const Player opponent = getOpp(actor);
+  for(const CollapseGoGroup& group: firstTopology.getGroups()) {
+    if(group.color == opponent && group.liberties.empty())
+      capturedPoints.insert(capturedPoints.end(),group.stones.begin(),group.stones.end());
+  }
+  sort(capturedPoints.begin(),capturedPoints.end());
+  capturedPoints.erase(unique(capturedPoints.begin(),capturedPoints.end()),capturedPoints.end());
+  tentativePosition.removeStones(capturedPoints);
+
+  CollapseGoTopology secondTopology = CollapseGoTopology::fullScanN4(tentativePosition);
+  const CollapseGoGroup& ownGroup = secondTopology.getGroupAt(point);
+  if(ownGroup.liberties.empty())
+    return CollapseGoApplyError::SUICIDE;
+
+  PositionalSuperkoKey candidateKey(
+    tentativePosition.getBoardSize(),
+    tentativePosition.getRowMajorOccupancy()
+  );
+  if(state.getPositionalSuperkoHistory().contains(candidateKey))
+    return CollapseGoApplyError::POSITIONAL_SUPERKO;
+  return CollapseGoApplyError::NONE;
+}
+
+}
 
 CollapseGoApplyResult::CollapseGoApplyResult()
   : accepted(false),
@@ -63,69 +128,69 @@ void CollapseGoReducer::completeEmptyLedgerSettlement(
   CollapseGoSettlementReason reason,
   CollapseGoApplyResult& result
 ) {
+  if(!state.ledger.empty())
+    throw StringError("Increment 0 empty-ledger settlement received a nonempty ledger");
   state.phase = CollapseGoPhase::ORDINARY_PLAY;
   state.consecutivePasses = 0;
   state.settlementCompleted = true;
-  state.blackRemainingQuotas = CollapseGoQuotas();
-  state.whiteRemainingQuotas = CollapseGoQuotas();
+  expireRemainingQuotas(state.blackRemainingQuotas,state.blackExpiredQuotas);
+  expireRemainingQuotas(state.whiteRemainingQuotas,state.whiteExpiredQuotas);
 
   result.settlementTriggered = true;
   result.settlementReason = reason;
 }
 
-CollapseGoScore CollapseGoReducer::scoreChineseArea(const Board& board) {
+CollapseGoScore CollapseGoReducer::scoreChineseArea(const CollapseGoPosition& position) {
   CollapseGoScore score;
   score.isScored = true;
 
-  array<bool,Board::MAX_ARR_SIZE> visited;
-  visited.fill(false);
-  vector<Loc> stack;
-  stack.reserve(static_cast<size_t>(board.x_size * board.y_size));
+  const int pointCount = position.getPointCount();
+  const int boardSize = position.getBoardSize();
+  vector<bool> visited(static_cast<size_t>(pointCount),false);
+  vector<int> stack;
+  stack.reserve(static_cast<size_t>(pointCount));
 
-  for(int y = 0; y < board.y_size; y++) {
-    for(int x = 0; x < board.x_size; x++) {
-      Loc loc = Location::getLoc(x,y,board.x_size);
-      if(board.colors[loc] == C_BLACK) {
-        score.blackStones++;
-        continue;
-      }
-      if(board.colors[loc] == C_WHITE) {
-        score.whiteStones++;
-        continue;
-      }
-      if(visited[loc])
-        continue;
-
-      int regionSize = 0;
-      bool touchesBlack = false;
-      bool touchesWhite = false;
-      visited[loc] = true;
-      stack.clear();
-      stack.push_back(loc);
-
-      while(!stack.empty()) {
-        Loc current = stack.back();
-        stack.pop_back();
-        regionSize++;
-        for(int direction = 0; direction < 4; direction++) {
-          Loc adjacent = current + board.adj_offsets[direction];
-          Color color = board.colors[adjacent];
-          if(color == C_BLACK)
-            touchesBlack = true;
-          else if(color == C_WHITE)
-            touchesWhite = true;
-          else if(color == C_EMPTY && !visited[adjacent]) {
-            visited[adjacent] = true;
-            stack.push_back(adjacent);
-          }
-        }
-      }
-
-      if(touchesBlack && !touchesWhite)
-        score.blackTerritory += regionSize;
-      else if(touchesWhite && !touchesBlack)
-        score.whiteTerritory += regionSize;
+  for(int point = 0; point < pointCount; point++) {
+    Color color = position.getColor(point);
+    if(color == C_BLACK) {
+      score.blackStones++;
+      continue;
     }
+    if(color == C_WHITE) {
+      score.whiteStones++;
+      continue;
+    }
+    if(visited[static_cast<size_t>(point)])
+      continue;
+
+    int regionSize = 0;
+    bool touchesBlack = false;
+    bool touchesWhite = false;
+    visited[static_cast<size_t>(point)] = true;
+    stack.clear();
+    stack.push_back(point);
+
+    while(!stack.empty()) {
+      int current = stack.back();
+      stack.pop_back();
+      regionSize++;
+      forEachN4Point(boardSize,current,[&](int adjacent) {
+        Color adjacentColor = position.getColor(adjacent);
+        if(adjacentColor == C_BLACK)
+          touchesBlack = true;
+        else if(adjacentColor == C_WHITE)
+          touchesWhite = true;
+        else if(!visited[static_cast<size_t>(adjacent)]) {
+          visited[static_cast<size_t>(adjacent)] = true;
+          stack.push_back(adjacent);
+        }
+      });
+    }
+
+    if(touchesBlack && !touchesWhite)
+      score.blackTerritory += regionSize;
+    else if(touchesWhite && !touchesBlack)
+      score.whiteTerritory += regionSize;
   }
 
   score.blackScoreNumerator = 2 * (score.blackStones + score.blackTerritory);
@@ -158,11 +223,11 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
   if(actor != state.actor)
     return reject(CollapseGoApplyError::WRONG_ACTOR);
 
-  Loc loc = Board::NULL_LOC;
+  int point = -1;
   if(isPointAction) {
     int x = action.getBoardX(boardSize);
     int y = action.getBoardY(boardSize);
-    loc = Location::getLoc(x,y,boardSize);
+    point = state.position.getPoint(x,y);
   }
 
   if(isSpecialAction) {
@@ -171,27 +236,32 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     CollapseGoAbility ability = abilityForAction(kind);
     if(state.getRemainingQuota(actor,ability) == 0)
       return reject(CollapseGoApplyError::QUOTA_EXHAUSTED);
-    if(state.board.colors[loc] != C_EMPTY)
+    if(!state.position.isEmpty(point))
       return reject(CollapseGoApplyError::POINT_OCCUPIED);
 
     if(kind == GameActionKind::DOUBLE_START) {
-      if(state.board.isIllegalSuicide(loc,actor,false))
-        return reject(CollapseGoApplyError::SUICIDE);
-      Board tentativeBoard(state.board);
-      tentativeBoard.playMoveAssumeLegal(loc,actor);
-      if(state.positionalSuperkoHistory.contains(tentativeBoard))
-        return reject(CollapseGoApplyError::POSITIONAL_SUPERKO);
+      CollapseGoPosition tentativePosition(state.position);
+      vector<int> ignoredCaptures;
+      CollapseGoApplyError simulationError = simulateN4Placement(
+        state,point,actor,kind,tentativePosition,ignoredCaptures
+      );
+      if(simulationError != CollapseGoApplyError::NONE)
+        return reject(simulationError);
     }
     return reject(CollapseGoApplyError::UNSUPPORTED_BY_SLICE);
   }
 
   if(kind == GameActionKind::PASS) {
     CollapseGoState candidate(state);
-    candidate.board.playMoveAssumeLegal(Board::PASS_LOC,actor);
     candidate.atomicActionCount++;
+    candidate.revision++;
+    candidate.logPosition++;
     candidate.consecutivePasses++;
     candidate.actor = getOpp(actor);
-    candidate.positionalSuperkoHistory.append(candidate.board);
+    candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
+      candidate.position.getBoardSize(),
+      candidate.position.getRowMajorOccupancy()
+    ));
 
     CollapseGoApplyResult result;
     result.accepted = true;
@@ -205,10 +275,15 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
         completeEmptyLedgerSettlement(candidate,CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES,result);
     }
     else if(candidate.phase == CollapseGoPhase::ORDINARY_PLAY && candidate.consecutivePasses == 2) {
-      candidate.score = scoreChineseArea(candidate.board);
+      candidate.score = scoreChineseArea(candidate.position);
       candidate.phase = CollapseGoPhase::TERMINAL;
       candidate.actor = C_EMPTY;
-      candidate.positionalSuperkoHistory.append(candidate.board);
+      candidate.stableTerminalEventCount++;
+      candidate.logPosition++;
+      candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
+        candidate.position.getBoardSize(),
+        candidate.position.getRowMajorOccupancy()
+      ));
       result.terminalScoreEventEmitted = true;
       result.positionalSuperkoAppends++;
     }
@@ -220,34 +295,38 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
 
   if(kind != GameActionKind::NORMAL)
     return reject(CollapseGoApplyError::INTERNAL_INVARIANT);
-  if(state.board.colors[loc] != C_EMPTY)
+  if(!state.position.isEmpty(point))
     return reject(CollapseGoApplyError::POINT_OCCUPIED);
-  if(state.board.isIllegalSuicide(loc,actor,false))
-    return reject(CollapseGoApplyError::SUICIDE);
 
   CollapseGoState candidate(state);
-  const Player opponent = getOpp(actor);
-  candidate.board.playMoveAssumeLegal(loc,actor);
-  PositionalSuperkoKey candidateKey(candidate.board);
-  if(state.positionalSuperkoHistory.contains(candidateKey))
-    return reject(CollapseGoApplyError::POSITIONAL_SUPERKO);
+  vector<int> capturedPoints;
+  CollapseGoApplyError simulationError = simulateN4Placement(
+    state,point,actor,kind,candidate.position,capturedPoints
+  );
+  if(simulationError != CollapseGoApplyError::NONE)
+    return reject(simulationError);
 
   CollapseGoApplyResult result;
   result.accepted = true;
   result.error = CollapseGoApplyError::NONE;
   result.positionalSuperkoAppends = 1;
-  for(int y = 0; y < boardSize; y++) {
-    for(int x = 0; x < boardSize; x++) {
-      Loc boardLoc = Location::getLoc(x,y,boardSize);
-      if(state.board.colors[boardLoc] == opponent && candidate.board.colors[boardLoc] == C_EMPTY)
-        result.capturedStones.push_back(boardLoc);
-    }
+  for(int capturedPoint: capturedPoints) {
+    result.capturedStones.push_back(Location::getLoc(
+      candidate.position.getX(capturedPoint),
+      candidate.position.getY(capturedPoint),
+      boardSize
+    ));
   }
 
   candidate.atomicActionCount++;
+  candidate.revision++;
+  candidate.logPosition++;
   candidate.consecutivePasses = 0;
-  candidate.actor = opponent;
-  candidate.positionalSuperkoHistory.append(candidateKey);
+  candidate.actor = getOpp(actor);
+  candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
+    candidate.position.getBoardSize(),
+    candidate.position.getRowMajorOccupancy()
+  ));
 
   if(candidate.phase == CollapseGoPhase::COLLAPSE_PLAY &&
      candidate.atomicActionCount == candidate.config.getThreshold())

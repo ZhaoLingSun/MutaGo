@@ -89,13 +89,16 @@ def positioned_state(
         config = OracleConfig(board_size=9)
     state = new_game(config)
     board = Board.from_points(config.board_size, black=black, white=white)
-    history = (Occupancy.empty(), board.occupancy)
+    action_count = len(board.stones)
+    history = (Occupancy.empty(),) * action_count + (board.occupancy,)
     return replace(
         state,
         board=board,
         actor=actor,
-        atomic_action_count=1,
+        atomic_action_count=action_count,
         psk_history=history,
+        revision=action_count,
+        log_position=action_count,
     )
 
 
@@ -132,8 +135,16 @@ class InitializationAndActionV1Tests(unittest.TestCase):
                 self.assertEqual(Color.BLACK, state.actor)
                 self.assertEqual(0, state.atomic_action_count)
                 self.assertEqual(0, state.consecutive_passes)
+                self.assertEqual(config.quotas, state.initial_quotas)
                 self.assertEqual(config.quotas, state.remaining_quotas)
+                self.assertEqual(PlayerQuotas.zero(), state.used_quotas)
                 self.assertEqual(PlayerQuotas.zero(), state.expired_quotas)
+                self.assertEqual((), state.ledger)
+                self.assertIsNone(state.pending_double)
+                self.assertEqual(0, state.settled_ledger_count)
+                self.assertEqual(0, state.stable_terminal_event_count)
+                self.assertEqual(0, state.revision)
+                self.assertEqual(0, state.log_position)
                 self.assertEqual((Occupancy.empty(),), state.psk_history)
                 self.assertEqual(Occupancy.empty(), state.board.occupancy)
 
@@ -144,9 +155,10 @@ class InitializationAndActionV1Tests(unittest.TestCase):
         for size in (8, 10, 20, True):
             with self.subTest(size=size), self.assertRaises(ValueError):
                 OracleConfig(board_size=size)  # type: ignore[arg-type]
-        for value in (-1, 2, True):
+        for value in (-1, True):
             with self.subTest(quota=value), self.assertRaises(ValueError):
                 SpecialQuotas(immortal=value)  # type: ignore[arg-type]
+        self.assertEqual(2, SpecialQuotas(immortal=2).immortal)
 
     def test_all_action_v1_ids_decode_for_each_supported_board(self) -> None:
         for size in (9, 13, 19):
@@ -342,8 +354,8 @@ class PlacementAndPSKTests(unittest.TestCase):
         repeated = trial.state.board.occupancy
         state_with_prior_repeat = replace(
             state,
-            atomic_action_count=2,
-            psk_history=(Occupancy.empty(), repeated, state.board.occupancy),
+            psk_history=state.psk_history[:-2]
+            + (repeated, state.board.occupancy),
         )
         transition = apply_action(
             state_with_prior_repeat,
@@ -644,12 +656,8 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
         ).state.board.occupancy
         state_with_prior_repeat = replace(
             state,
-            atomic_action_count=2,
-            psk_history=(
-                Occupancy.empty(),
-                normal_result,
-                state.board.occupancy,
-            ),
+            psk_history=state.psk_history[:-2]
+            + (normal_result, state.board.occupancy),
         )
         transition = apply_action(
             state_with_prior_repeat,

@@ -50,7 +50,7 @@ private:
     CollapseGoSettlementReason reason,
     CollapseGoApplyResult& result
   );
-  static CollapseGoScore scoreChineseArea(const Board& board);
+  static CollapseGoScore scoreChineseArea(const CollapseGoPosition& position);
 };
 
 #endif // GAME_COLLAPSEGOREDUCER_H_

@@ -143,8 +143,8 @@ json occupancyJson(const PositionalSuperkoKey& key) {
   return json{{"black",black},{"white",white}};
 }
 
-json boardOccupancyJson(const Board& board) {
-  return occupancyJson(PositionalSuperkoKey(board));
+json positionOccupancyJson(const CollapseGoPosition& position) {
+  return occupancyJson(PositionalSuperkoKey(position.getBoardSize(),position.getRowMajorOccupancy()));
 }
 
 json quotaVectorJson(const CollapseGoState& state, Player player) {
@@ -213,7 +213,7 @@ json observationJson(
   else
     status = "REJECTED";
 
-  json occupancy = boardOccupancyJson(state.getBoard());
+  json occupancy = positionOccupancyJson(state.getPosition());
   return json{
     {"A",state.getAtomicActionCount()},
     {"actor",playerJson(state.getActor())},

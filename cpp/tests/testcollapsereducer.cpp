@@ -1,5 +1,7 @@
 #include "../tests/tests.h"
 
+#include <limits>
+
 #include "../game/collapsegoreducer.h"
 
 using namespace std;
@@ -88,36 +90,68 @@ void Tests::runCollapseReducerTests() {
     expectStringError([]() {
       CollapseGoConfig(9,CollapseGoQuotas(-1,0,0),CollapseGoQuotas());
     });
+
+    static constexpr int64_t safeIntegerMaximum = 9007199254740991LL;
+    CollapseGoConfig safeMaximum(
+      9,
+      CollapseGoQuotas(safeIntegerMaximum,0,0),
+      CollapseGoQuotas(0,safeIntegerMaximum,safeIntegerMaximum)
+    );
+    testAssert(safeMaximum.getInitialQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == safeIntegerMaximum);
+    testAssert(safeMaximum.getInitialQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == safeIntegerMaximum);
+    testAssert(safeMaximum.getInitialQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == safeIntegerMaximum);
+    CollapseGoState safeMaximumState(safeMaximum);
+    testAssert(safeMaximumState.getRemainingQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == safeIntegerMaximum);
+    testAssert(safeMaximumState.getRemainingQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == safeIntegerMaximum);
+    safeMaximumState.checkConsistency();
     expectStringError([]() {
-      CollapseGoConfig(9,CollapseGoQuotas(),CollapseGoQuotas(0,2,0));
+      CollapseGoConfig(9,CollapseGoQuotas(9007199254740992LL,0,0),CollapseGoQuotas());
+    });
+    expectStringError([]() {
+      CollapseGoConfig(9,CollapseGoQuotas(),CollapseGoQuotas(0,numeric_limits<int64_t>::max(),0));
     });
 
-    CollapseGoConfig mixed(13,CollapseGoQuotas(1,0,1),CollapseGoQuotas(0,1,0));
-    testAssert(mixed.getInitialQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 1);
+    CollapseGoConfig mixed(13,CollapseGoQuotas(2,0,3),CollapseGoQuotas(0,4,0));
+    testAssert(mixed.getInitialQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 2);
     testAssert(mixed.getInitialQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
-    testAssert(mixed.getInitialQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(mixed.getInitialQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 3);
+    testAssert(mixed.getInitialQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 4);
     testAssert(mixed.getInitialQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 0);
 
     CollapseGoState state(CollapseGoConfig::allOne(9));
     state.checkConsistency();
     const PositionalSuperkoHistory& history = state.getPositionalSuperkoHistory();
     testAssert(history.size() == 1);
-    testAssert(history.at(0) == PositionalSuperkoKey(state.getBoard()));
+    const CollapseGoPosition& position = state.getPosition();
+    testAssert(history.at(0) == PositionalSuperkoKey(position.getBoardSize(),position.getRowMajorOccupancy()));
     testAssert(history.at(0).getOccupancy().size() == 81);
     for(uint8_t color: history.at(0).getOccupancy())
       testAssert(color == C_EMPTY);
+    testAssert(state.getLedger().empty());
+    testAssert(!state.getPendingDouble().has_value());
+    testAssert(state.getRevision() == 0);
+    testAssert(state.getLogPosition() == 0);
+    testAssert(state.getSettledLedgerCount() == 0);
+    testAssert(state.getStableTerminalEventCount() == 0);
 
-    Board metadataOnlyDifference(state.getBoard());
+    Board metadataOnlyDifference(9,9);
     metadataOnlyDifference.setSimpleKoLoc(Location::getLoc(4,4,9));
     metadataOnlyDifference.numBlackCaptures = 7;
     metadataOnlyDifference.numWhiteCaptures = 11;
     testAssert(PositionalSuperkoKey(metadataOnlyDifference) == history.at(0));
+    testAssert(PositionalSuperkoKey(9,position.getRowMajorOccupancy()) == PositionalSuperkoKey(metadataOnlyDifference));
+
+    PositionalSuperkoHistory dimensionCheckedHistory(history.at(0));
+    vector<uint8_t> empty13(13 * 13,static_cast<uint8_t>(C_EMPTY));
+    expectStringError([&]() { dimensionCheckedHistory.append(PositionalSuperkoKey(13,empty13)); });
+    Board board13(13,13);
+    expectStringError([&]() { dimensionCheckedHistory.append(board13); });
   }
 
   // PASS permits repeated occupancy, preserves duplicates, and two pre-threshold passes settle an empty ledger.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
-    PositionalSuperkoKey empty(state.getBoard());
+    PositionalSuperkoKey empty(state.getPosition().getBoardSize(),state.getPosition().getRowMajorOccupancy());
 
     CollapseGoApplyResult first = playPass(state);
     testAssert(first.positionalSuperkoAppends == 1);
@@ -125,6 +159,8 @@ void Tests::runCollapseReducerTests() {
     testAssert(state.getAtomicActionCount() == 1);
     testAssert(state.getConsecutivePasses() == 1);
     testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getRevision() == 1);
+    testAssert(state.getLogPosition() == 1);
     testAssert(state.getPositionalSuperkoHistory().size() == 2);
     testAssert(state.getPositionalSuperkoHistory().at(0) == empty);
     testAssert(state.getPositionalSuperkoHistory().at(1) == empty);
@@ -141,12 +177,48 @@ void Tests::runCollapseReducerTests() {
     testAssert(state.getConsecutivePasses() == 0);
     testAssert(state.getPositionalSuperkoHistory().size() == 3);
     testAssert(state.getPositionalSuperkoHistory().at(2) == empty);
+    testAssert(state.getRevision() == 2);
+    testAssert(state.getLogPosition() == 2);
+    testAssert(state.getSettledLedgerCount() == 0);
     state.checkConsistency();
     for(Player pla: {P_BLACK,P_WHITE}) {
       testAssert(state.getRemainingQuota(pla,CollapseGoAbility::IMMORTAL) == 0);
       testAssert(state.getRemainingQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 0);
       testAssert(state.getRemainingQuota(pla,CollapseGoAbility::EIGHTWAY) == 0);
+      testAssert(state.getUsedQuota(pla,CollapseGoAbility::IMMORTAL) == 0);
+      testAssert(state.getUsedQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 0);
+      testAssert(state.getUsedQuota(pla,CollapseGoAbility::EIGHTWAY) == 0);
+      testAssert(state.getExpiredQuota(pla,CollapseGoAbility::IMMORTAL) == 1);
+      testAssert(state.getExpiredQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 1);
+      testAssert(state.getExpiredQuota(pla,CollapseGoAbility::EIGHTWAY) == 1);
     }
+  }
+
+  // Empty-ledger settlement expires every remaining component for arbitrary nonnegative quotas.
+  {
+    CollapseGoConfig config(9,CollapseGoQuotas(2,0,3),CollapseGoQuotas(0,4,0));
+    CollapseGoState state(config);
+    playPass(state);
+    playPass(state);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    for(CollapseGoAbility ability: {
+      CollapseGoAbility::IMMORTAL,
+      CollapseGoAbility::DOUBLE_MOVE,
+      CollapseGoAbility::EIGHTWAY,
+    }) {
+      for(Player pla: {P_BLACK,P_WHITE}) {
+        testAssert(state.getRemainingQuota(pla,ability) == 0);
+        testAssert(state.getUsedQuota(pla,ability) == 0);
+        testAssert(state.getExpiredQuota(pla,ability) == state.getInitialQuota(pla,ability));
+      }
+    }
+    testAssert(state.getExpiredQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 2);
+    testAssert(state.getExpiredQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getExpiredQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 3);
+    testAssert(state.getExpiredQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(state.getExpiredQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 4);
+    testAssert(state.getExpiredQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 0);
+    state.checkConsistency();
   }
 
   // Each supported size reaches its exact threshold without carrying a PASS into ordinary play.
@@ -219,14 +291,24 @@ void Tests::runCollapseReducerTests() {
     playNormal(state,3,1); playNormal(state,7,8);
     playNormal(state,3,3); playNormal(state,7,7);
 
+    CollapseGoStoneSource survivingBlackSource = state.getPosition().getCell(0,2).getSource();
+    CollapseGoStoneSource survivingWhiteSource = state.getPosition().getCell(8,8).getSource();
     CollapseGoApplyResult capture = playNormal(state,2,2);
     testAssert(capture.capturedStones.size() == 2);
     testAssert(capture.capturedStones[0] == Location::getLoc(1,2,9));
     testAssert(capture.capturedStones[1] == Location::getLoc(3,2,9));
-    testAssert(state.getBoard().colors[Location::getLoc(1,2,9)] == C_EMPTY);
-    testAssert(state.getBoard().colors[Location::getLoc(3,2,9)] == C_EMPTY);
-    testAssert(state.getBoard().colors[Location::getLoc(2,2,9)] == C_BLACK);
-    state.getBoard().checkConsistency();
+    const CollapseGoPosition& position = state.getPosition();
+    testAssert(position.getColor(1,2) == C_EMPTY);
+    testAssert(position.getColor(3,2) == C_EMPTY);
+    testAssert(position.getColor(2,2) == C_BLACK);
+    testAssert(position.getCell(2,2).getSource().originActionNumber == 13);
+    testAssert(position.getCell(2,2).getSource().originKind == GameActionKind::NORMAL);
+    testAssert(!position.getCell(2,2).getSource().specialLink.has_value());
+    testAssert(position.getCell(0,2).getSource() == survivingBlackSource);
+    testAssert(position.getCell(8,8).getSource() == survivingWhiteSource);
+    expectStringError([&]() { (void)position.getCell(1,2).getSource(); });
+    expectStringError([&]() { (void)position.getCell(3,2).getSource(); });
+    position.checkConsistency();
   }
 
   // Ordinary N4 suicide is rejected without any partial board, counter, or PSK mutation.
@@ -259,6 +341,12 @@ void Tests::runCollapseReducerTests() {
       CollapseGoApplyError::SUICIDE,
       true
     );
+    for(GameActionKind kind: {GameActionKind::IMMORTAL,GameActionKind::EIGHTWAY}) {
+      expectRejectedAtomically(
+        state,P_BLACK,specialAction(kind,9,2,2),
+        CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
+      );
+    }
   }
 
   // Off-footprint, terminal, phase, actor, quota, and occupancy precedence is deterministic.
@@ -348,7 +436,8 @@ void Tests::runCollapseReducerTests() {
     CollapseGoApplyResult capture = playNormal(state,2,1);
     testAssert(capture.capturedStones.size() == 1);
     testAssert(capture.capturedStones[0] == Location::getLoc(2,2,9));
-    testAssert(state.getBoard().ko_loc == Location::getLoc(2,2,9));
+    testAssert(state.getPosition().getColor(2,2) == C_EMPTY);
+    testAssert(state.getPosition().getColor(2,1) == C_BLACK);
     expectRejectedAtomically(
       state,P_WHITE,normalAction(9,2,2),CollapseGoApplyError::POSITIONAL_SUPERKO,true
     );
@@ -367,6 +456,12 @@ void Tests::runCollapseReducerTests() {
       state,P_WHITE,specialAction(GameActionKind::DOUBLE_START,9,2,2),
       CollapseGoApplyError::POSITIONAL_SUPERKO,true
     );
+    for(GameActionKind kind: {GameActionKind::IMMORTAL,GameActionKind::EIGHTWAY}) {
+      expectRejectedAtomically(
+        state,P_WHITE,specialAction(kind,9,2,2),
+        CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
+      );
+    }
   }
 
   // Two new ordinary-play passes score the current stable board and append both action and terminal occupancies.
@@ -392,6 +487,9 @@ void Tests::runCollapseReducerTests() {
     testAssert(state.getPhase() == CollapseGoPhase::TERMINAL);
     testAssert(state.getActor() == C_EMPTY);
     testAssert(state.getAtomicActionCount() == 8);
+    testAssert(state.getRevision() == 8);
+    testAssert(state.getStableTerminalEventCount() == 1);
+    testAssert(state.getLogPosition() == 9);
     testAssert(state.getConsecutivePasses() == 2);
     testAssert(state.getPositionalSuperkoHistory().size() == 10);
     testAssert(state.getPositionalSuperkoHistory().at(7) == state.getPositionalSuperkoHistory().at(8));
@@ -411,5 +509,25 @@ void Tests::runCollapseReducerTests() {
     testAssert(score.winner == P_WHITE);
     testAssert(score.marginNumerator == 13);
     testAssert(score.getMargin() == 6.5);
+  }
+
+  // Copy-then-commit preserves the original exact state while the copy advances independently.
+  {
+    CollapseGoState original(CollapseGoConfig::allOne(9));
+    CollapseGoState committed(original);
+    CollapseGoApplyResult result = playNormal(committed,4,4);
+    testAssert(result.accepted);
+    testAssert(original.getPosition().isEmpty(4,4));
+    testAssert(original.getAtomicActionCount() == 0);
+    testAssert(original.getRevision() == 0);
+    testAssert(original.getLogPosition() == 0);
+    testAssert(committed.getPosition().getColor(4,4) == C_BLACK);
+    testAssert(committed.getPosition().getCell(4,4).getSource().originActionNumber == 1);
+    testAssert(committed.getAtomicActionCount() == 1);
+    testAssert(committed.getRevision() == 1);
+    testAssert(committed.getLogPosition() == 1);
+    testAssert(!original.isEqualForTesting(committed));
+    original.checkConsistency();
+    committed.checkConsistency();
   }
 }

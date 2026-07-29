@@ -32,6 +32,9 @@ namespace Tests {
   //testcollapsecontracts.cpp
   void runCollapseContractTests();
 
+  //testcollapsetopology.cpp
+  void runCollapseTopologyTests();
+
   //testcollapsereducer.cpp
   void runCollapseReducerTests();
 

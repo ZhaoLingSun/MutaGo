@@ -1,16 +1,20 @@
 #ifndef GAME_COLLAPSEGOSTATE_H_
 #define GAME_COLLAPSEGOSTATE_H_
 
-#include "../game/board.h"
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "../game/collapsegoposition.h"
 #include "../game/positionalsuperko.h"
 
 struct CollapseGoQuotas {
-  int immortal;
-  int doubleMove;
-  int eightway;
+  int64_t immortal;
+  int64_t doubleMove;
+  int64_t eightway;
 
   CollapseGoQuotas();
-  CollapseGoQuotas(int immortalQuota, int doubleMoveQuota, int eightwayQuota);
+  CollapseGoQuotas(int64_t immortalQuota, int64_t doubleMoveQuota, int64_t eightwayQuota);
 
   bool operator==(const CollapseGoQuotas& other) const;
   bool operator!=(const CollapseGoQuotas& other) const;
@@ -33,7 +37,7 @@ public:
   int getBoardSize() const;
   int getThreshold() const;
   const CollapseGoQuotas& getInitialQuotas(Player pla) const;
-  int getInitialQuota(Player pla, CollapseGoAbility ability) const;
+  int64_t getInitialQuota(Player pla, CollapseGoAbility ability) const;
 
   bool operator==(const CollapseGoConfig& other) const;
   bool operator!=(const CollapseGoConfig& other) const;
@@ -55,6 +59,55 @@ enum class CollapseGoSettlementReason {
   NONE,
   THRESHOLD,
   PRE_THRESHOLD_TWO_PASSES,
+};
+
+struct CollapseGoLedgerEntry {
+  int64_t specialLink;
+  int64_t originActionNumber;
+  Player owner;
+  GameActionKind originKind;
+  int sourcePoint;
+
+  CollapseGoLedgerEntry(
+    int64_t entrySpecialLink,
+    int64_t entryOriginActionNumber,
+    Player entryOwner,
+    GameActionKind entryOriginKind,
+    int entrySourcePoint
+  );
+
+  bool operator==(const CollapseGoLedgerEntry& other) const;
+  bool operator!=(const CollapseGoLedgerEntry& other) const;
+};
+
+class CollapseGoLedger {
+public:
+  CollapseGoLedger();
+
+  size_t size() const;
+  bool empty() const;
+  const CollapseGoLedgerEntry& at(size_t index) const;
+
+  bool operator==(const CollapseGoLedger& other) const;
+  bool operator!=(const CollapseGoLedger& other) const;
+
+private:
+  std::vector<CollapseGoLedgerEntry> entries;
+
+  void append(const CollapseGoLedgerEntry& entry);
+
+  friend class CollapseGoReducer;
+};
+
+struct CollapseGoPendingDouble {
+  Player owner;
+  int64_t specialLink;
+  int64_t originActionNumber;
+
+  CollapseGoPendingDouble(Player pendingOwner, int64_t pendingSpecialLink, int64_t pendingOriginActionNumber);
+
+  bool operator==(const CollapseGoPendingDouble& other) const;
+  bool operator!=(const CollapseGoPendingDouble& other) const;
 };
 
 struct CollapseGoScore {
@@ -83,13 +136,22 @@ public:
   explicit CollapseGoState(const CollapseGoConfig& config);
 
   const CollapseGoConfig& getConfig() const;
-  const Board& getBoard() const;
+  const CollapseGoPosition& getPosition() const;
   CollapseGoPhase getPhase() const;
   Player getActor() const;
-  int getAtomicActionCount() const;
+  int64_t getAtomicActionCount() const;
   int getConsecutivePasses() const;
   bool isSettlementCompleted() const;
-  int getRemainingQuota(Player pla, CollapseGoAbility ability) const;
+  int64_t getInitialQuota(Player pla, CollapseGoAbility ability) const;
+  int64_t getRemainingQuota(Player pla, CollapseGoAbility ability) const;
+  int64_t getUsedQuota(Player pla, CollapseGoAbility ability) const;
+  int64_t getExpiredQuota(Player pla, CollapseGoAbility ability) const;
+  const CollapseGoLedger& getLedger() const;
+  const std::optional<CollapseGoPendingDouble>& getPendingDouble() const;
+  int64_t getRevision() const;
+  int64_t getLogPosition() const;
+  int64_t getSettledLedgerCount() const;
+  int64_t getStableTerminalEventCount() const;
   const PositionalSuperkoHistory& getPositionalSuperkoHistory() const;
   const CollapseGoScore& getScore() const;
 
@@ -98,14 +160,26 @@ public:
 
 private:
   CollapseGoConfig config;
-  Board board;
+  CollapseGoPosition position;
   CollapseGoPhase phase;
   Player actor;
-  int atomicActionCount;
+  int64_t atomicActionCount;
   int consecutivePasses;
   bool settlementCompleted;
+  CollapseGoQuotas blackInitialQuotas;
+  CollapseGoQuotas whiteInitialQuotas;
   CollapseGoQuotas blackRemainingQuotas;
   CollapseGoQuotas whiteRemainingQuotas;
+  CollapseGoQuotas blackUsedQuotas;
+  CollapseGoQuotas whiteUsedQuotas;
+  CollapseGoQuotas blackExpiredQuotas;
+  CollapseGoQuotas whiteExpiredQuotas;
+  CollapseGoLedger ledger;
+  std::optional<CollapseGoPendingDouble> pendingDouble;
+  int64_t revision;
+  int64_t logPosition;
+  int64_t settledLedgerCount;
+  int64_t stableTerminalEventCount;
   PositionalSuperkoHistory positionalSuperkoHistory;
   CollapseGoScore score;
 

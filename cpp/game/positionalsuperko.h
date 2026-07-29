@@ -1,6 +1,7 @@
 #ifndef GAME_POSITIONALSUPERKO_H_
 #define GAME_POSITIONALSUPERKO_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -8,6 +9,7 @@
 
 class PositionalSuperkoKey {
 public:
+  PositionalSuperkoKey(int boardSize, const std::vector<uint8_t>& rowMajorOccupancy);
   explicit PositionalSuperkoKey(const Board& board);
 
   int getXSize() const;
@@ -21,10 +23,15 @@ private:
   int xSize;
   int ySize;
   std::vector<uint8_t> occupancy;
+
+  PositionalSuperkoKey(int keyXSize, int keyYSize, const std::vector<uint8_t>& rowMajorOccupancy);
+  void checkConsistency() const;
 };
 
 class PositionalSuperkoHistory {
 public:
+  explicit PositionalSuperkoHistory(const PositionalSuperkoKey& initialKey);
+  PositionalSuperkoHistory(int boardSize, const std::vector<uint8_t>& initialRowMajorOccupancy);
   explicit PositionalSuperkoHistory(const Board& initialBoard);
 
   size_t size() const;
@@ -40,6 +47,8 @@ public:
 
 private:
   std::vector<PositionalSuperkoKey> entries;
+
+  void requireMatchingDimensions(const PositionalSuperkoKey& key) const;
 };
 
 #endif // GAME_POSITIONALSUPERKO_H_
