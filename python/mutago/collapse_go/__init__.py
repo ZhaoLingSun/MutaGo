@@ -3,6 +3,7 @@
 from .normal_pass_oracle import (
     ACTION_SCHEMA_VERSION,
     CANVAS_SIZE,
+    JSON_SAFE_INTEGER_MAX,
     KOMI_NUMERATOR,
     PASS_ACTION_ID,
     SCORE_DENOMINATOR,
@@ -47,6 +48,7 @@ from .normal_pass_oracle import (
 __all__ = [
     "ACTION_SCHEMA_VERSION",
     "CANVAS_SIZE",
+    "JSON_SAFE_INTEGER_MAX",
     "KOMI_NUMERATOR",
     "PASS_ACTION_ID",
     "SCORE_DENOMINATOR",

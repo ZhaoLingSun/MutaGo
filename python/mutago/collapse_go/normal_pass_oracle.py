@@ -26,6 +26,7 @@ PASS_ACTION_ID = 1444
 SUPPORTED_BOARD_SIZES = (9, 13, 19)
 KOMI_NUMERATOR = 15
 SCORE_DENOMINATOR = 2
+JSON_SAFE_INTEGER_MAX = 9_007_199_254_740_991
 
 
 class Color(str, Enum):
@@ -360,8 +361,15 @@ class SpecialQuotas:
             ("double_start", self.double_start),
             ("eightway", self.eightway),
         ):
-            if type(value) is not int or value < 0:
-                raise ValueError(f"{name} quota must be a nonnegative integer")
+            if (
+                type(value) is not int
+                or value < 0
+                or value > JSON_SAFE_INTEGER_MAX
+            ):
+                raise ValueError(
+                    f"{name} quota must be an integer in "
+                    f"0..{JSON_SAFE_INTEGER_MAX}"
+                )
 
     @classmethod
     def zero(cls) -> "SpecialQuotas":
@@ -1444,6 +1452,7 @@ __all__ = [
     "ACTION_SCHEMA_VERSION",
     "CANVAS_SIZE",
     "KOMI_NUMERATOR",
+    "JSON_SAFE_INTEGER_MAX",
     "PASS_ACTION_ID",
     "SCORE_DENOMINATOR",
     "SUPPORTED_BOARD_SIZES",

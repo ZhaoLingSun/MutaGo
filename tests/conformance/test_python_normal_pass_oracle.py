@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from mutago.collapse_go import (  # noqa: E402
     PASS_ACTION_ID,
+    JSON_SAFE_INTEGER_MAX,
     ActionKind,
     ActionV1DecodeError,
     Board,
@@ -155,10 +156,14 @@ class InitializationAndActionV1Tests(unittest.TestCase):
         for size in (8, 10, 20, True):
             with self.subTest(size=size), self.assertRaises(ValueError):
                 OracleConfig(board_size=size)  # type: ignore[arg-type]
-        for value in (-1, True):
+        for value in (-1, JSON_SAFE_INTEGER_MAX + 1, True):
             with self.subTest(quota=value), self.assertRaises(ValueError):
                 SpecialQuotas(immortal=value)  # type: ignore[arg-type]
         self.assertEqual(2, SpecialQuotas(immortal=2).immortal)
+        self.assertEqual(
+            JSON_SAFE_INTEGER_MAX,
+            SpecialQuotas(eightway=JSON_SAFE_INTEGER_MAX).eightway,
+        )
 
     def test_all_action_v1_ids_decode_for_each_supported_board(self) -> None:
         for size in (9, 13, 19):
