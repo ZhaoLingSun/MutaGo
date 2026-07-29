@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -15,6 +16,63 @@ if str(CONFORMANCE_DIR) not in sys.path:
     sys.path.insert(0, str(CONFORMANCE_DIR))
 
 import normal_pass_differential as diff  # noqa: E402
+
+
+def _capturing_double_request() -> dict[str, object]:
+    builder = diff._EpisodeBuilder.create("legacy-capturing-double", 9, "ONE")
+    for actor, x, y in (
+        (diff.Color.BLACK, 0, 1),
+        (diff.Color.WHITE, 1, 1),
+        (diff.Color.BLACK, 1, 0),
+        (diff.Color.WHITE, 8, 8),
+        (diff.Color.BLACK, 2, 1),
+        (diff.Color.WHITE, 8, 7),
+    ):
+        builder.add(actor, diff.board_action_v1(9, x, y))
+    builder.add(
+        diff.Color.BLACK,
+        diff.board_action_v1(9, 1, 2, diff.ActionKind.DOUBLE_START),
+    )
+    return builder.request()
+
+
+PINNED_LEGACY_SEED = "opt-in-integration"
+PINNED_LEGACY_RANDOM_CANDIDATE_COUNT = 1600
+PINNED_LEGACY_SUMMARY = {
+    "accepted": 526,
+    "boardCandidateCounts": {"9": 642, "13": 605, "19": 662},
+    "candidateCount": 1909,
+    "curatedCandidateCount": 309,
+    "episodeCount": 27,
+    "errorCounts": {
+        "INVALID_PHASE": 15,
+        "NONE": 526,
+        "POINT_OCCUPIED": 16,
+        "POINT_OFF_BOARD": 654,
+        "POSITIONAL_SUPERKO": 1,
+        "QUOTA_EXHAUSTED": 508,
+        "SUICIDE": 1,
+        "TERMINAL_STATE": 7,
+        "UNSUPPORTED_BY_SLICE": 3,
+        "WRONG_ACTOR": 178,
+    },
+    "generatorVersion": "sha256-counter-v0-unfrozen",
+    "protocolVersion": "normal-pass-diff-v0-unfrozen",
+    "randomCandidateCount": 1600,
+    "randomUniqueActionIds": 1445,
+    "rehearsalOnly": True,
+    "rejected": 1380,
+    "scope": "NORMAL_PASS_SLICE_UNFROZEN_V0",
+    "seed": "opt-in-integration",
+    "settlementReasonCounts": {
+        "NONE": 1898,
+        "PRE_THRESHOLD_TWO_PASSES": 8,
+        "THRESHOLD": 3,
+    },
+    "sha256": "297e38b15aae76e507d71e7bda1fb38b0d320ed102fd6f99644c6ed758051cf1",
+    "thresholdBoardSizes": [9, 13, 19],
+    "unsupported": 3,
+}
 
 
 class Sha256CounterGeneratorTests(unittest.TestCase):
@@ -151,6 +209,30 @@ class Sha256CounterGeneratorTests(unittest.TestCase):
             self.assertEqual("THRESHOLD", observations[-1]["settlementReason"])
             self.assertEqual("ORDINARY_PLAY", observations[-1]["phase"])
             self.assertEqual(0, observations[-1]["consecutivePasses"])
+    def test_legacy_adapter_discards_legal_capturing_double_tentative_state(self) -> None:
+        request = _capturing_double_request()
+        prefix = diff._EpisodeBuilder.create("legacy-capturing-prefix", 9, "ONE")
+        for step in request["steps"][:-1]:
+            prefix.add(diff.Color(step["candidateActor"]), step["action"])
+        action = request["steps"][-1]["action"]
+        before = prefix.state
+        tentative = diff.apply_action(before, diff.Color.BLACK, action)
+        self.assertTrue(tentative.accepted)
+        self.assertEqual((10,), tentative.atomic_event.captured.white)
+        with self.assertRaises(diff.UnsupportedSliceAction):
+            diff._apply_v0_slice_action(before, diff.Color.BLACK, action)
+        self.assertEqual(before, prefix.state)
+
+        response = diff.oracle_episode_response(request)
+        rejected = response["observations"][-1]
+        previous = response["observations"][-2]
+        self.assertEqual("UNSUPPORTED", rejected["status"])
+        self.assertEqual("UNSUPPORTED_BY_SLICE", rejected["errorCode"])
+        self.assertEqual({"black": [], "white": []}, rejected["captures"])
+        self.assertEqual(previous["A"], rejected["A"])
+        self.assertEqual(previous["blackOccupancy"], rejected["blackOccupancy"])
+        self.assertEqual(previous["whiteOccupancy"], rejected["whiteOccupancy"])
+        self.assertEqual(previous["remainingQuotas"], rejected["remainingQuotas"])
 
 
 class ProtocolTests(unittest.TestCase):
@@ -221,6 +303,27 @@ class ProtocolTests(unittest.TestCase):
                 0.01,
             )
 
+    def test_nonfinite_and_nonpositive_process_timeouts_fail_closed(self) -> None:
+        for invalid_timeout in (float("inf"), float("nan"), 0.0, -1.0, True):
+            with self.subTest(invalid_timeout=invalid_timeout):
+                with self.assertRaises(diff.ProbeError):
+                    diff._run_probe_process(
+                        [sys.executable, "-c", "pass"], "", invalid_timeout
+                    )
+
+        with self.assertRaises(diff.ProbeOutputDecodeError) as invalid_utf8:
+            diff._run_probe_process(
+                [
+                    sys.executable,
+                    "-c",
+                    "import os; os.write(1, b'\\xff\\n')",
+                ],
+                "",
+                5,
+            )
+        self.assertEqual("stdout", invalid_utf8.exception.stream_name)
+        self.assertEqual(0, invalid_utf8.exception.response_index)
+
     def test_process_output_is_bounded_before_decoding(self) -> None:
         with mock.patch.object(diff, "MAX_PROBE_STDOUT_BYTES", 32):
             with self.assertRaisesRegex(diff.ProbeError, "bounded process output"):
@@ -233,6 +336,17 @@ class ProtocolTests(unittest.TestCase):
                     "",
                     5,
                 )
+
+    def test_inherited_grandchild_pipes_are_bounded_by_timeout(self) -> None:
+        script = (
+            "import os,subprocess,sys; "
+            "subprocess.Popen([sys.executable,'-c','import time; time.sleep(5)']); "
+            "os._exit(0)"
+        )
+        started = time.perf_counter()
+        with self.assertRaisesRegex(diff.ProbeError, "corpus deadline"):
+            diff._run_probe_process([sys.executable, "-c", script], "", 0.2)
+        self.assertLess(time.perf_counter() - started, 1.5)
 
     def test_repository_oracle_modules_are_pinned_to_this_checkout(self) -> None:
         self.assertEqual(str(diff.PYTHON_ROOT), sys.path[0])
@@ -252,6 +366,98 @@ class ProtocolTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {foreign_name: foreign}):
             with self.assertRaisesRegex(ImportError, "outside this checkout"):
                 diff._require_repository_oracle_module(foreign_name)
+
+    def test_malformed_response_diagnostics_include_reproduction_context(self) -> None:
+        expected_manifest = {
+            "candidateCount": diff.MIN_RANDOM_CANDIDATE_COUNT,
+            "generatorVersion": diff.GENERATOR_VERSION,
+            "protocolVersion": diff.PROTOCOL_VERSION,
+            "seed": "diagnostic-seed",
+        }
+        request_line = diff.canonical_json(self.request)
+        action_prefix = diff.canonical_json(self.request["steps"])
+        cases = (
+            (
+                "malformed-json",
+                diff._ProbeProcessResult(0, '{"bad":\n', ""),
+                diff.ProtocolError,
+                "responseIndex=0",
+            ),
+            (
+                "non-newline",
+                diff._ProbeProcessResult(0, "{}", ""),
+                diff.ProbeError,
+                "responseIndex=0",
+            ),
+            (
+                "wrong-line-count",
+                diff._ProbeProcessResult(0, "{}\n{}\n", ""),
+                diff.ProbeError,
+                "responseIndex=1",
+            ),
+        )
+        for name, completed, error_type, response_index in cases:
+            with self.subTest(name=name):
+                with (
+                    mock.patch.object(
+                        diff, "generate_curated_episodes", return_value=[self.request]
+                    ),
+                    mock.patch.object(
+                        diff, "generate_random_episodes", return_value=[]
+                    ),
+                    mock.patch.object(
+                        diff,
+                        "oracle_episode_response",
+                        return_value=diff.oracle_episode_response(self.request),
+                    ),
+                    mock.patch.object(
+                        diff, "_run_probe_process", return_value=completed
+                    ),
+                ):
+                    with self.assertRaises(error_type) as caught:
+                        diff.run_differential(
+                            sys.executable,
+                            seed="diagnostic-seed",
+                            candidate_count=diff.MIN_RANDOM_CANDIDATE_COUNT,
+                        )
+                diagnostic = str(caught.exception)
+                self.assertIn(response_index, diagnostic)
+                self.assertIn(
+                    f"manifest={diff.canonical_json(expected_manifest)}", diagnostic
+                )
+                self.assertIn(f"canonicalRequest={request_line}", diagnostic)
+                self.assertIn(f"actionPrefix={action_prefix}", diagnostic)
+
+        with (
+            mock.patch.object(
+                diff, "generate_curated_episodes", return_value=[self.request]
+            ),
+            mock.patch.object(diff, "generate_random_episodes", return_value=[]),
+            mock.patch.object(
+                diff,
+                "oracle_episode_response",
+                return_value=diff.oracle_episode_response(self.request),
+            ),
+            mock.patch.object(
+                diff,
+                "_run_probe_process",
+                side_effect=diff.ProbeOutputDecodeError("stdout", 3, 0),
+            ),
+        ):
+            with self.assertRaises(diff.ProbeError) as caught:
+                diff.run_differential(
+                    sys.executable,
+                    seed="diagnostic-seed",
+                    candidate_count=diff.MIN_RANDOM_CANDIDATE_COUNT,
+                )
+        diagnostic = str(caught.exception)
+        self.assertIn("stdout is not UTF-8", diagnostic)
+        self.assertIn("responseIndex=0", diagnostic)
+        self.assertIn(
+            f"manifest={diff.canonical_json(expected_manifest)}", diagnostic
+        )
+        self.assertIn(f"canonicalRequest={request_line}", diagnostic)
+        self.assertIn(f"actionPrefix={action_prefix}", diagnostic)
 
     def test_canonical_response_parser_rejects_noncanonical_and_duplicates(self) -> None:
         expected = diff.oracle_episode_response(self.request)
@@ -375,19 +581,19 @@ class ExecutableIntegrationTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.probe = Path(os.environ["MUTAGO_COLLAPSE_SLICE_PROBE"])
 
-    def test_probe_matches_repeated_complete_corpus_deterministically(self) -> None:
+    def test_probe_matches_pinned_legacy_summary_and_digest_deterministically(self) -> None:
         first = diff.run_differential(
             self.probe,
-            seed="opt-in-integration",
-            candidate_count=1600,
+            seed=PINNED_LEGACY_SEED,
+            candidate_count=PINNED_LEGACY_RANDOM_CANDIDATE_COUNT,
         )
         second = diff.run_differential(
             self.probe,
-            seed="opt-in-integration",
-            candidate_count=1600,
+            seed=PINNED_LEGACY_SEED,
+            candidate_count=PINNED_LEGACY_RANDOM_CANDIDATE_COUNT,
         )
-        self.assertEqual(first["sha256"], second["sha256"])
-        self.assertEqual(first, second)
+        self.assertEqual(PINNED_LEGACY_SUMMARY, first)
+        self.assertEqual(PINNED_LEGACY_SUMMARY, second)
         self.assertEqual(1600, first["randomCandidateCount"])
         self.assertEqual(1445, first["randomUniqueActionIds"])
         self.assertEqual(
@@ -397,6 +603,26 @@ class ExecutableIntegrationTests(unittest.TestCase):
         self.assertEqual([9, 13, 19], first["thresholdBoardSizes"])
         self.assertGreaterEqual(first["settlementReasonCounts"]["THRESHOLD"], 3)
         self.assertTrue(first["rehearsalOnly"])
+
+    def test_probe_legacy_adapter_discards_capturing_double_transaction(self) -> None:
+        request = _capturing_double_request()
+        completed = diff._run_probe_process(
+            [str(self.probe)], diff.canonical_json(request) + "\n", 5
+        )
+        self.assertEqual(0, completed.returncode)
+        self.assertEqual("", completed.stderr)
+        self.assertTrue(completed.stdout.endswith("\n"))
+        actual = diff.parse_canonical_response_line(completed.stdout[:-1], request)
+        expected = diff.oracle_episode_response(request)
+        self.assertEqual(expected, actual)
+        rejected = actual["observations"][-1]
+        previous = actual["observations"][-2]
+        self.assertEqual("UNSUPPORTED", rejected["status"])
+        self.assertEqual({"black": [], "white": []}, rejected["captures"])
+        self.assertEqual(previous["A"], rejected["A"])
+        self.assertEqual(previous["blackOccupancy"], rejected["blackOccupancy"])
+        self.assertEqual(previous["whiteOccupancy"], rejected["whiteOccupancy"])
+        self.assertEqual(previous["remainingQuotas"], rejected["remainingQuotas"])
 
     def test_probe_fails_closed_on_malformed_frame(self) -> None:
         completed = subprocess.run(

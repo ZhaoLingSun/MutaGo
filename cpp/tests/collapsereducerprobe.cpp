@@ -1,5 +1,6 @@
-// Test-only differential probe for the explicitly UNFROZEN NORMAL/PASS v0 slice.
+// Test-only differential probe for explicitly UNFROZEN Collapse Go slices.
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -13,6 +14,7 @@
 #endif
 
 #include "../game/collapsegoreducer.h"
+#include "../game/collapsegotopology.h"
 #include "../game/gameaction.h"
 #include "../game/rulesetidentity.h"
 
@@ -21,12 +23,16 @@ using namespace std;
 
 namespace {
 
-const string PROTOCOL_VERSION = "normal-pass-diff-v0-unfrozen";
+const string LEGACY_PROTOCOL_VERSION = "normal-pass-diff-v0-unfrozen";
+const string DOUBLE_PROTOCOL_VERSION = "double-move-diff-v1-unfrozen";
 constexpr size_t MAX_REQUEST_FRAME_BYTES = 1024 * 1024;
-constexpr size_t MAX_RESPONSE_FRAME_BYTES = 16 * 1024 * 1024;
+constexpr size_t MAX_LEGACY_RESPONSE_FRAME_BYTES = 16 * 1024 * 1024;
+constexpr size_t MAX_DOUBLE_RESPONSE_FRAME_BYTES = 32 * 1024 * 1024;
 constexpr size_t MAX_EPISODE_STEPS = 160;
+constexpr int MAX_TEST_QUOTA = 4;
 
 [[noreturn]] void failFrame(const string& message) {
+  // Retain the legacy diagnostic prefix for backward-compatible malformed-frame tests.
   throw StringError("Malformed normal-pass differential frame: " + message);
 }
 
@@ -128,6 +134,57 @@ string settlementReasonString(CollapseGoSettlementReason reason) {
   }
 }
 
+string actionKindString(GameActionKind kind) {
+  switch(kind) {
+  case GameActionKind::NORMAL: return "NORMAL";
+  case GameActionKind::IMMORTAL: return "IMMORTAL";
+  case GameActionKind::DOUBLE_START: return "DOUBLE_START";
+  case GameActionKind::EIGHTWAY: return "EIGHTWAY";
+  case GameActionKind::PASS: return "PASS";
+  default:
+    throw StringError("Unexpected action kind in Collapse Go projection");
+  }
+}
+
+string abilityStateString(CollapseGoLedgerAbilityState state) {
+  switch(state) {
+  case CollapseGoLedgerAbilityState::CONSUMED: return "CONSUMED";
+  case CollapseGoLedgerAbilityState::INACTIVE: return "INACTIVE";
+  default:
+    throw StringError("Unexpected ledger ability state");
+  }
+}
+
+string stoneStateString(CollapseGoLedgerStoneState state) {
+  switch(state) {
+  case CollapseGoLedgerStoneState::ON_BOARD: return "ON_BOARD";
+  case CollapseGoLedgerStoneState::CAPTURED: return "CAPTURED";
+  default:
+    throw StringError("Unexpected ledger stone state");
+  }
+}
+
+string ledgerSettlementStateString(CollapseGoLedgerSettlementState state) {
+  switch(state) {
+  case CollapseGoLedgerSettlementState::PENDING: return "PENDING";
+  case CollapseGoLedgerSettlementState::SETTLED: return "SETTLED";
+  default:
+    throw StringError("Unexpected ledger settlement state");
+  }
+}
+
+string actionEventId(int64_t actionNumber) {
+  return "action-" + to_string(actionNumber);
+}
+
+string specialEventId(int64_t specialLink) {
+  return "special-" + to_string(specialLink);
+}
+
+string stoneSourceId(int64_t originActionNumber) {
+  return "stone-" + to_string(originActionNumber);
+}
+
 json occupancyJson(const PositionalSuperkoKey& key) {
   json black = json::array();
   json white = json::array();
@@ -186,20 +243,24 @@ json scoreJson(const CollapseGoScore& score) {
 }
 
 json capturesJson(const CollapseGoApplyResult& result, Player candidateActor, int boardSize) {
-  json black = json::array();
-  json white = json::array();
+  vector<int> points;
   if(result.accepted) {
-    json* captured = candidateActor == P_BLACK ? &white : &black;
     for(Loc loc: result.capturedStones) {
       int x = Location::getX(loc,boardSize);
       int y = Location::getY(loc,boardSize);
-      captured->push_back(y * boardSize + x);
+      points.push_back(y * boardSize + x);
     }
+    sort(points.begin(),points.end());
   }
+  json black = json::array();
+  json white = json::array();
+  json* captured = candidateActor == P_BLACK ? &white : &black;
+  for(int point: points)
+    captured->push_back(point);
   return json{{"black",black},{"white",white}};
 }
 
-json observationJson(
+json legacyObservationJson(
   size_t stepIndex,
   const CollapseGoState& state,
   const CollapseGoApplyResult& result,
@@ -233,7 +294,7 @@ json observationJson(
   };
 }
 
-CollapseGoConfig parseConfig(const json& request) {
+CollapseGoConfig parseLegacyConfig(const json& request) {
   int boardSize = requireInt(request.at("boardSize"),"boardSize");
   if(!GameAction::isSupportedBoardSize(boardSize))
     failFrame("boardSize must be exactly 9, 13, or 19");
@@ -246,23 +307,42 @@ CollapseGoConfig parseConfig(const json& request) {
   failFrame("quotaMode must be ZERO or ONE");
 }
 
-json processFrame(const string& line) {
-  json request = RulesetIdentity::parseRestrictedJson(line);
-  if(RulesetIdentity::canonicalizeRestrictedJson(request).size() > MAX_REQUEST_FRAME_BYTES)
-    failFrame("canonical request exceeds the 1 MiB request limit");
+CollapseGoApplyResult unsupportedResult() {
+  CollapseGoApplyResult result;
+  result.accepted = false;
+  result.error = CollapseGoApplyError::UNSUPPORTED_BY_SLICE;
+  return result;
+}
+
+CollapseGoApplyResult applyLegacyV0(
+  CollapseGoState& state,
+  Player candidateActor,
+  const GameAction& action
+) {
+  CollapseGoState candidate(state);
+  CollapseGoApplyResult result = CollapseGoReducer::apply(candidate,candidateActor,action);
+  const GameActionKind kind = action.getKind();
+  const bool special = kind == GameActionKind::IMMORTAL ||
+    kind == GameActionKind::DOUBLE_START || kind == GameActionKind::EIGHTWAY;
+  if(result.accepted && special)
+    return unsupportedResult();
+  if(result.accepted)
+    state = candidate;
+  return result;
+}
+
+json processLegacyRequest(const json& request) {
   requireExactFields(
     request,
     {"protocolVersion","episodeId","boardSize","quotaMode","steps"},
     "episode request"
   );
-
-  string protocolVersion = requireString(request.at("protocolVersion"),"protocolVersion");
-  if(protocolVersion != PROTOCOL_VERSION)
-    failFrame("protocolVersion must be " + PROTOCOL_VERSION);
+  if(requireString(request.at("protocolVersion"),"protocolVersion") != LEGACY_PROTOCOL_VERSION)
+    failFrame("protocolVersion must be " + LEGACY_PROTOCOL_VERSION);
 
   string episodeId = requireString(request.at("episodeId"),"episodeId");
   validateEpisodeId(episodeId);
-  CollapseGoState state(parseConfig(request));
+  CollapseGoState state(parseLegacyConfig(request));
 
   const json& steps = request.at("steps");
   if(!steps.is_array() || steps.empty() || steps.size() > MAX_EPISODE_STEPS)
@@ -273,18 +353,355 @@ json processFrame(const string& line) {
     const json& step = steps.at(i);
     requireExactFields(step,{"candidateActor","action"},"step " + Global::sizeToString(i));
     Player candidateActor = parseCandidateActor(step.at("candidateActor"));
-
     GameAction action = GameAction::ofJson(step.at("action"));
-    CollapseGoApplyResult result = CollapseGoReducer::apply(state,candidateActor,action);
+    CollapseGoApplyResult result = applyLegacyV0(state,candidateActor,action);
     state.checkConsistency();
-    observations.push_back(observationJson(i,state,result,candidateActor));
+    observations.push_back(legacyObservationJson(i,state,result,candidateActor));
   }
 
   return json{
     {"episodeId",episodeId},
     {"observations",observations},
-    {"protocolVersion",PROTOCOL_VERSION},
+    {"protocolVersion",LEGACY_PROTOCOL_VERSION},
   };
+}
+
+enum class QuotaBucket {
+  INITIAL,
+  REMAINING,
+  USED,
+  EXPIRED,
+};
+
+int64_t quotaValue(
+  const CollapseGoState& state,
+  Player player,
+  CollapseGoAbility ability,
+  QuotaBucket bucket
+) {
+  switch(bucket) {
+  case QuotaBucket::INITIAL: return state.getInitialQuota(player,ability);
+  case QuotaBucket::REMAINING: return state.getRemainingQuota(player,ability);
+  case QuotaBucket::USED: return state.getUsedQuota(player,ability);
+  case QuotaBucket::EXPIRED: return state.getExpiredQuota(player,ability);
+  default:
+    throw StringError("Unexpected quota bucket");
+  }
+}
+
+json exactQuotaVectorJson(const CollapseGoState& state, Player player, QuotaBucket bucket) {
+  return json{
+    {"DOUBLE_START",quotaValue(state,player,CollapseGoAbility::DOUBLE_MOVE,bucket)},
+    {"EIGHTWAY",quotaValue(state,player,CollapseGoAbility::EIGHTWAY,bucket)},
+    {"IMMORTAL",quotaValue(state,player,CollapseGoAbility::IMMORTAL,bucket)},
+  };
+}
+
+json exactPlayerQuotasJson(const CollapseGoState& state, QuotaBucket bucket) {
+  return json{
+    {"BLACK",exactQuotaVectorJson(state,P_BLACK,bucket)},
+    {"WHITE",exactQuotaVectorJson(state,P_WHITE,bucket)},
+  };
+}
+
+json rationalJson(int numerator) {
+  return json{{"denominator",2},{"numerator",numerator}};
+}
+
+json terminalStateJson(const CollapseGoState& state) {
+  const CollapseGoScore& score = state.getScore();
+  if(!score.isScored)
+    return json{{"ended",false}};
+  Player winner = score.winner;
+  return json{
+    {"ended",true},
+    {"loser",playerJson(getOpp(winner))},
+    {"reason","SCORE"},
+    {"score",json{
+      {"black",rationalJson(score.blackScoreNumerator)},
+      {"margin",rationalJson(score.marginNumerator)},
+      {"white",rationalJson(score.whiteScoreNumerator)},
+    }},
+    {"winner",playerJson(winner)},
+  };
+}
+
+json stonesJson(const CollapseGoPosition& position) {
+  json stones = json::array();
+  for(int point = 0; point < position.getPointCount(); point++) {
+    const CollapseGoCell& cell = position.getCell(point);
+    if(!cell.isOccupied())
+      continue;
+    const CollapseGoStoneSource& source = cell.getSource();
+    json special = source.specialLink.has_value() ? json(specialEventId(*source.specialLink)) : json(nullptr);
+    stones.push_back(json{
+      {"color",playerJson(cell.getColor())},
+      {"originActionNumber",source.originActionNumber},
+      {"originKind",actionKindString(source.originKind)},
+      {"point",point},
+      {"sourceId",stoneSourceId(source.originActionNumber)},
+      {"specialEventId",special},
+    });
+  }
+  return stones;
+}
+
+json ledgerJson(const CollapseGoState& state) {
+  json ledger = json::array();
+  for(size_t i = 0; i < state.getLedger().size(); i++) {
+    const CollapseGoLedgerEntry& entry = state.getLedger().at(i);
+    ledger.push_back(json{
+      {"abilityState",abilityStateString(entry.abilityState)},
+      {"eventId",specialEventId(entry.specialLink)},
+      {"kind",actionKindString(entry.originKind)},
+      {"logicalOrder",entry.originActionNumber - 1},
+      {"originActionNumber",entry.originActionNumber},
+      {"owner",playerJson(entry.owner)},
+      {"settlementState",ledgerSettlementStateString(entry.settlementState)},
+      {"sourcePoint",entry.sourcePoint},
+      {"sourceStoneId",stoneSourceId(entry.originActionNumber)},
+      {"stoneState",stoneStateString(entry.stoneState)},
+      {"tombstone",entry.tombstone},
+    });
+  }
+  return ledger;
+}
+
+json pendingDoubleJson(const CollapseGoState& state) {
+  if(!state.getPendingDouble().has_value())
+    return nullptr;
+  const CollapseGoPendingDouble& pending = *state.getPendingDouble();
+  return json{
+    {"eventId",specialEventId(pending.specialLink)},
+    {"owner",playerJson(pending.owner)},
+    {"startActionNumber",pending.originActionNumber},
+  };
+}
+
+json groupsJson(const CollapseGoState& state) {
+  CollapseGoTopology topology = CollapseGoTopology::fullScanN4(state.getPosition());
+  json groups = json::array();
+  for(const CollapseGoGroup& group: topology.getGroups()) {
+    groups.push_back(json{
+      {"color",playerJson(group.color)},
+      {"eightwayAnchors",json::array()},
+      {"immortalAnchors",json::array()},
+      {"liberties",group.liberties},
+      {"protected",false},
+      {"stones",group.stones},
+    });
+  }
+  return groups;
+}
+
+json exactStateJson(const CollapseGoState& state) {
+  return json{
+    {"actor",playerJson(state.getActor())},
+    {"atomicActionCount",state.getAtomicActionCount()},
+    {"boardSize",state.getConfig().getBoardSize()},
+    {"consecutivePasses",state.getConsecutivePasses()},
+    {"expiredQuotas",exactPlayerQuotasJson(state,QuotaBucket::EXPIRED)},
+    {"groups",groupsJson(state)},
+    {"initialQuotas",exactPlayerQuotasJson(state,QuotaBucket::INITIAL)},
+    {"ledger",ledgerJson(state)},
+    {"logPosition",state.getLogPosition()},
+    {"occupancy",positionOccupancyJson(state.getPosition())},
+    {"pendingDouble",pendingDoubleJson(state)},
+    {"phase",phaseString(state.getPhase())},
+    {"pskHistory",pskHistoryJson(state)},
+    {"remainingQuotas",exactPlayerQuotasJson(state,QuotaBucket::REMAINING)},
+    {"revision",state.getRevision()},
+    {"settledLedgerCount",state.getSettledLedgerCount()},
+    {"settlementCompleted",state.isSettlementCompleted()},
+    {"stableTerminalEventCount",state.getStableTerminalEventCount()},
+    {"stones",stonesJson(state.getPosition())},
+    {"terminal",terminalStateJson(state)},
+    {"threshold",state.getConfig().getThreshold()},
+    {"usedQuotas",exactPlayerQuotasJson(state,QuotaBucket::USED)},
+  };
+}
+
+json atomicEventJson(
+  const CollapseGoState& before,
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result,
+  Player candidateActor,
+  const json& actionJson
+) {
+  if(!result.accepted)
+    return nullptr;
+  const int64_t actionNumber = after.getAtomicActionCount();
+  return json{
+    {"action",actionJson},
+    {"actionNumber",actionNumber},
+    {"actor",playerJson(candidateActor)},
+    {"captured",capturesJson(result,candidateActor,after.getConfig().getBoardSize())},
+    {"eventId",actionEventId(actionNumber)},
+    {"pskHistoryIndex",static_cast<int64_t>(before.getPositionalSuperkoHistory().size())},
+    {"stableOccupancy",positionOccupancyJson(after.getPosition())},
+  };
+}
+
+json settlementTraceJson(
+  const CollapseGoState& before,
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result
+) {
+  if(!result.settlementTriggered)
+    return nullptr;
+  json steps = json::array();
+  const int64_t atomicPskIndex = static_cast<int64_t>(before.getPositionalSuperkoHistory().size());
+  for(size_t i = 0; i < result.settlementSteps.size(); i++) {
+    const CollapseGoSettlementStep& step = result.settlementSteps[i];
+    steps.push_back(json{
+      {"abilityDeactivated",step.abilityDeactivated},
+      {"ledgerEventId",specialEventId(step.specialLink)},
+      {"noOp",step.noOp},
+      {"pskHistoryIndex",atomicPskIndex + 1 + static_cast<int64_t>(i)},
+      {"removalBatches",json::array()},
+      {"stableOccupancy",positionOccupancyJson(after.getPosition())},
+      {"stepIndex",static_cast<int64_t>(i)},
+    });
+  }
+  return json{
+    {"handoffActor",playerJson(after.getActor())},
+    {"steps",steps},
+    {"triggerReason",settlementReasonString(result.settlementReason)},
+  };
+}
+
+json terminalEventJson(
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result
+) {
+  if(!result.terminalScoreEventEmitted)
+    return nullptr;
+  const CollapseGoScore& score = after.getScore();
+  return json{
+    {"eventId","terminal-" + to_string(after.getLogPosition())},
+    {"loser",playerJson(getOpp(score.winner))},
+    {"pskHistoryIndex",static_cast<int64_t>(after.getPositionalSuperkoHistory().size() - 1)},
+    {"reason","SCORE"},
+    {"stableOccupancy",positionOccupancyJson(after.getPosition())},
+    {"winner",playerJson(score.winner)},
+  };
+}
+
+json exactTransitionJson(
+  const CollapseGoState& before,
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result,
+  Player candidateActor,
+  const json& actionJson
+) {
+  string status = result.accepted ? "ACCEPTED" :
+    result.isUnsupportedBySlice() ? "UNSUPPORTED" : "REJECTED";
+  string transitionKind = result.accepted ? "ATOMIC_ACTION" :
+    result.isUnsupportedBySlice() ? "UNSUPPORTED" : "REJECTED";
+  json errorCode = result.accepted ? json(nullptr) : json(result.getErrorCode());
+  return json{
+    {"accepted",result.accepted},
+    {"action",actionJson},
+    {"atomicEvent",atomicEventJson(before,after,result,candidateActor,actionJson)},
+    {"candidateActor",playerJson(candidateActor)},
+    {"errorCode",errorCode},
+    {"positionalSuperkoAppends",result.positionalSuperkoAppends},
+    {"settlement",settlementTraceJson(before,after,result)},
+    {"status",status},
+    {"terminalEvent",terminalEventJson(after,result)},
+    {"transitionKind",transitionKind},
+  };
+}
+
+CollapseGoQuotas parseQuotaVector(const json& value, const string& context) {
+  requireExactFields(value,{"IMMORTAL","DOUBLE_START","EIGHTWAY"},context);
+  int immortal = requireInt(value.at("IMMORTAL"),context + ".IMMORTAL");
+  int doubleMove = requireInt(value.at("DOUBLE_START"),context + ".DOUBLE_START");
+  int eightway = requireInt(value.at("EIGHTWAY"),context + ".EIGHTWAY");
+  for(const pair<string,int>& quota: {
+    make_pair(string("IMMORTAL"),immortal),
+    make_pair(string("DOUBLE_START"),doubleMove),
+    make_pair(string("EIGHTWAY"),eightway),
+  }) {
+    if(quota.second < 0 || quota.second > MAX_TEST_QUOTA)
+      failFrame(context + "." + quota.first + " must be in 0..4 for this bounded test carrier");
+  }
+  return CollapseGoQuotas(immortal,doubleMove,eightway);
+}
+
+CollapseGoConfig parseDoubleConfig(const json& request) {
+  int boardSize = requireInt(request.at("boardSize"),"boardSize");
+  if(!GameAction::isSupportedBoardSize(boardSize))
+    failFrame("boardSize must be exactly 9, 13, or 19");
+  const json& quotas = request.at("initialQuotas");
+  requireExactFields(quotas,{"BLACK","WHITE"},"initialQuotas");
+  return CollapseGoConfig(
+    boardSize,
+    parseQuotaVector(quotas.at("BLACK"),"initialQuotas.BLACK"),
+    parseQuotaVector(quotas.at("WHITE"),"initialQuotas.WHITE")
+  );
+}
+
+json processDoubleRequest(const json& request) {
+  requireExactFields(
+    request,
+    {"protocolVersion","episodeId","boardSize","initialQuotas","steps"},
+    "Double episode request"
+  );
+  if(requireString(request.at("protocolVersion"),"protocolVersion") != DOUBLE_PROTOCOL_VERSION)
+    failFrame("protocolVersion must be " + DOUBLE_PROTOCOL_VERSION);
+
+  string episodeId = requireString(request.at("episodeId"),"episodeId");
+  validateEpisodeId(episodeId);
+  CollapseGoState state(parseDoubleConfig(request));
+  json initialState = exactStateJson(state);
+
+  const json& steps = request.at("steps");
+  if(!steps.is_array() || steps.empty() || steps.size() > MAX_EPISODE_STEPS)
+    failFrame("steps must be a nonempty array within the test-only resource limit");
+
+  json observations = json::array();
+  for(size_t i = 0; i < steps.size(); i++) {
+    const json& step = steps.at(i);
+    requireExactFields(step,{"candidateActor","action"},"Double step " + Global::sizeToString(i));
+    Player candidateActor = parseCandidateActor(step.at("candidateActor"));
+    GameAction action = GameAction::ofJson(step.at("action"));
+    CollapseGoState before(state);
+    CollapseGoApplyResult result = CollapseGoReducer::apply(state,candidateActor,action);
+    state.checkConsistency();
+    observations.push_back(json{
+      {"state",exactStateJson(state)},
+      {"stepIndex",static_cast<int64_t>(i + 1)},
+      {"transition",exactTransitionJson(before,state,result,candidateActor,step.at("action"))},
+    });
+  }
+
+  return json{
+    {"episodeId",episodeId},
+    {"initialState",initialState},
+    {"observations",observations},
+    {"protocolVersion",DOUBLE_PROTOCOL_VERSION},
+  };
+}
+
+json processFrame(const string& line) {
+  json request = RulesetIdentity::parseRestrictedJson(line);
+  if(RulesetIdentity::canonicalizeRestrictedJson(request).size() > MAX_REQUEST_FRAME_BYTES)
+    failFrame("canonical request exceeds the 1 MiB request limit");
+  if(!request.is_object() || request.find("protocolVersion") == request.end())
+    failFrame("episode request must contain protocolVersion");
+  string protocolVersion = requireString(request.at("protocolVersion"),"protocolVersion");
+  if(protocolVersion == LEGACY_PROTOCOL_VERSION)
+    return processLegacyRequest(request);
+  if(protocolVersion == DOUBLE_PROTOCOL_VERSION)
+    return processDoubleRequest(request);
+  failFrame("unsupported protocolVersion " + protocolVersion);
+}
+
+size_t responseLimit(const json& response) {
+  if(response.at("protocolVersion") == DOUBLE_PROTOCOL_VERSION)
+    return MAX_DOUBLE_RESPONSE_FRAME_BYTES;
+  return MAX_LEGACY_RESPONSE_FRAME_BYTES;
 }
 
 }
@@ -306,8 +723,8 @@ int main() {
         failFrame("line " + Global::sizeToString(lineNumber) + " is empty");
       json response = processFrame(line);
       string responseLine = RulesetIdentity::canonicalizeRestrictedJson(response);
-      if(responseLine.size() > MAX_RESPONSE_FRAME_BYTES)
-        failFrame("response exceeds the 16 MiB response limit");
+      if(responseLine.size() > responseLimit(response))
+        failFrame("response exceeds the protocol-specific response limit");
       cout << responseLine << '\n';
       if(!cout)
         throw IOError("Could not write differential probe response");

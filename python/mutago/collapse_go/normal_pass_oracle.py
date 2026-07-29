@@ -1,21 +1,19 @@
-"""Independent stdlib-only Collapse Go NORMAL/PASS reference slice.
+"""Independent stdlib-only Collapse Go NORMAL/PASS/Double oracle slice.
 
-This module exposes the source-aware immutable state shell, quota accounting,
-future ledger/pending-Double shapes, and deterministic full-board N4 topology,
-while deliberately implementing only the semantic transitions needed to execute
-NORMAL and PASS through empty-ledger settlement and ordinary-play scoring.  It
-does not import KataGo's Python game helpers, the executable contract
-implementation, C++, or numerical frameworks.
+This module implements source-aware immutable NORMAL, PASS, and frozen
+Double-Move semantics, including the forced same-owner continuation, ordered
+occupancy-only PSK transactions, quota/event accounting, and Double tombstone
+settlement.  Immortal and Eightway remain outside this increment: they receive
+only rejections that can be decided before their ability mechanics are needed,
+and a potentially legal attempt raises :class:`UnsupportedSliceAction`.
 
-Special actions receive all rejections that can be decided before their
-ability mechanics are needed.  A special action that remains potentially
-legal raises :class:`UnsupportedSliceAction`; it is never assigned a made-up
-semantic rejection.
+The oracle does not import KataGo's Python game helpers, the executable
+contract implementation, C++, subprocess/FFI bridges, or numerical frameworks.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Iterable, Mapping
 
@@ -532,10 +530,85 @@ class AtomicActionEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class SettlementStepEvent:
+    """One immutable internal settlement-pop semantic record."""
+
+    event_id: str
+    logical_order: int
+    owner: Color
+    kind: ActionKind
+    ability_deactivated: bool
+    no_op: bool
+    stable_occupancy: Occupancy
+    stable_stones: tuple[Stone, ...]
+    psk_history_index: int
+    revision: int
+    log_position: int
+
+    def __post_init__(self) -> None:
+        max_logical_order = JSON_SAFE_INTEGER_MAX - 1
+        if type(self.logical_order) is not int or not (
+            0 <= self.logical_order <= max_logical_order
+        ):
+            raise ValueError(
+                "settlement step logical_order must be an integer in "
+                f"0..{max_logical_order} so its one-based action remains JSON-safe"
+            )
+        if self.event_id != f"special-{self.logical_order + 1}":
+            raise ValueError("settlement step must reference its canonical event ID")
+        if not isinstance(self.owner, Color):
+            raise TypeError("settlement step owner must be Color")
+        if self.kind is not ActionKind.DOUBLE_START:
+            raise ValueError("Increment 1 settlement steps must reference Double events")
+        if type(self.ability_deactivated) is not bool or type(self.no_op) is not bool:
+            raise TypeError("settlement step disposition flags must be bool")
+        if self.ability_deactivated or not self.no_op:
+            raise ValueError("Double settlement steps must be no-op without deactivation")
+        if not isinstance(self.stable_occupancy, Occupancy):
+            raise TypeError("settlement step occupancy must be Occupancy")
+        if not isinstance(self.stable_stones, tuple) or any(
+            not isinstance(stone, Stone) for stone in self.stable_stones
+        ):
+            raise TypeError("settlement step stable_stones must contain Stone values")
+        for name, value in (
+            ("psk_history_index", self.psk_history_index),
+            ("revision", self.revision),
+            ("log_position", self.log_position),
+        ):
+            if type(value) is not int or not (0 <= value <= JSON_SAFE_INTEGER_MAX):
+                raise ValueError(
+                    f"settlement step {name} must be an integer in "
+                    f"0..{JSON_SAFE_INTEGER_MAX}"
+                )
+
+
+@dataclass(frozen=True, slots=True)
 class SettlementResult:
     reason: SettlementReason
     ledger_entry_count: int = 0
     psk_appends: int = 0
+    steps: tuple[SettlementStepEvent, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reason, SettlementReason):
+            raise TypeError("settlement reason must be SettlementReason")
+        for name, value in (
+            ("ledger_entry_count", self.ledger_entry_count),
+            ("psk_appends", self.psk_appends),
+        ):
+            if type(value) is not int or not (0 <= value <= JSON_SAFE_INTEGER_MAX):
+                raise ValueError(
+                    f"settlement {name} must be an integer in "
+                    f"0..{JSON_SAFE_INTEGER_MAX}"
+                )
+        if not isinstance(self.steps, tuple) or any(
+            not isinstance(step, SettlementStepEvent) for step in self.steps
+        ):
+            raise TypeError("settlement steps must contain SettlementStepEvent values")
+        if len(self.steps) != self.ledger_entry_count:
+            raise ValueError("settlement step count must match ledger_entry_count")
+        if self.psk_appends != self.ledger_entry_count:
+            raise ValueError("each settlement ledger entry must append one PSK state")
 
 
 @dataclass(frozen=True, slots=True)
@@ -625,25 +698,6 @@ class OracleState:
             self.expired_quotas,
         )
 
-        # Increment 0 exposes the final exact shell but accepts no special
-        # action, so every reachable state has no special ledger or pending
-        # continuation and has consumed no special quota.
-        if self.ledger or self.pending_double is not None:
-            raise ValueError("the NORMAL/PASS slice requires empty ledger and pending Double")
-        if self.settled_ledger_count != 0:
-            raise ValueError("the empty ledger slice cannot settle ledger entries")
-        if self.used_quotas != PlayerQuotas.zero():
-            raise ValueError("the NORMAL/PASS slice cannot consume special quotas")
-
-        for stone in self.board.stones:
-            if stone.origin_action_number > self.atomic_action_count:
-                raise ValueError("stone source action cannot exceed committed action count")
-            if (
-                stone.origin_kind is not ActionKind.NORMAL
-                or stone.special_event_id is not None
-            ):
-                raise ValueError("Increment 0 board stones must have NORMAL sources")
-
         for group in scan_n4_groups(self.board):
             if not group.liberties and not group.protected:
                 raise ValueError(
@@ -664,6 +718,8 @@ class OracleState:
                 if point >= self.board.size * self.board.size:
                     raise ValueError("PSK history contains an off-board point")
 
+        self._validate_double_slice()
+
         if self.phase is Phase.COLLAPSE_PLAY:
             if self.actor is None or self.terminal is not None:
                 raise ValueError("collapse play requires an actor and no terminal result")
@@ -671,8 +727,6 @@ class OracleState:
                 raise ValueError("an exposed collapse state must be before the threshold")
             if self.consecutive_passes > 1:
                 raise ValueError("two collapse passes must already have triggered settlement")
-            if self.remaining_quotas != self.initial_quotas:
-                raise ValueError("unused quotas must remain available before settlement")
             if self.expired_quotas != PlayerQuotas.zero():
                 raise ValueError("quotas cannot expire before settlement")
         elif self.phase is Phase.ORDINARY_PLAY:
@@ -709,11 +763,144 @@ class OracleState:
                 "settled ledger events, and stable terminal events"
             )
 
+    def _validate_double_slice(self) -> None:
+        board_by_source: dict[str, Stone] = {}
+        double_source_ids: set[str] = set()
+        for stone in self.board.stones:
+            if stone.origin_action_number > self.atomic_action_count:
+                raise ValueError("stone source action cannot exceed committed action count")
+            if stone.origin_kind is ActionKind.NORMAL:
+                if stone.special_event_id is not None:
+                    raise ValueError("NORMAL stone source cannot link to an event")
+            elif stone.origin_kind is ActionKind.DOUBLE_START:
+                double_source_ids.add(stone.source_id)
+            else:
+                raise ValueError(
+                    "Increment 1 board stones must be NORMAL or DOUBLE_START sources"
+                )
+            board_by_source[stone.source_id] = stone
+
+        expected_settlement_state = (
+            SettlementState.PENDING
+            if self.phase is Phase.COLLAPSE_PLAY
+            else SettlementState.SETTLED
+        )
+        expected_ability_state = (
+            AbilityState.CONSUMED
+            if self.phase is Phase.COLLAPSE_PLAY
+            else AbilityState.INACTIVE
+        )
+        expected_settled_count = (
+            0 if self.phase is Phase.COLLAPSE_PLAY else len(self.ledger)
+        )
+        if self.settled_ledger_count != expected_settled_count:
+            raise ValueError("settled ledger count must match the exposed phase")
+
+        event_by_source: dict[str, SpecialEvent] = {}
+        used_double = {Color.BLACK: 0, Color.WHITE: 0}
+        previous_order = -1
+        for event in self.ledger:
+            if event.kind is not ActionKind.DOUBLE_START:
+                raise ValueError("Increment 1 ledger entries must be DOUBLE_START")
+            if event.logical_order <= previous_order:
+                raise ValueError("special ledger must be strictly ordered globally")
+            if previous_order >= 0 and event.logical_order - previous_order < 2:
+                raise ValueError("Double starts require an intervening continuation")
+            previous_order = event.logical_order
+            if event.origin_action_number > self.atomic_action_count:
+                raise ValueError("special event action cannot exceed committed action count")
+            if event.origin_action_number >= self.threshold:
+                raise ValueError("Double start action must be strictly before the threshold")
+            if event.source_point >= self.board.size * self.board.size:
+                raise ValueError("special event source point is off board")
+            if event.origin_action_number >= len(self.psk_history):
+                raise ValueError("special event source action occupancy is missing")
+            origin_occupancy = self.psk_history[event.origin_action_number]
+            prior_occupancy = self.psk_history[event.origin_action_number - 1]
+            if event.source_point in prior_occupancy.black + prior_occupancy.white:
+                raise ValueError("special event source point was occupied before its action")
+            owner_points = (
+                origin_occupancy.black
+                if event.owner is Color.BLACK
+                else origin_occupancy.white
+            )
+            if event.source_point not in owner_points:
+                raise ValueError("special event source identity disagrees with PSK history")
+            if not event.tombstone:
+                raise ValueError("Double events must remain tombstones")
+            if (
+                event.settlement_state is not expected_settlement_state
+                or event.ability_state is not expected_ability_state
+            ):
+                raise ValueError("Double event lifecycle must match the exposed phase")
+
+            source = board_by_source.get(event.source_stone_id)
+            if event.stone_state is StoneState.ON_BOARD:
+                if source is None:
+                    raise ValueError("on-board special event source is missing")
+                if (
+                    source.point != event.source_point
+                    or source.color is not event.owner
+                    or source.origin_action_number != event.origin_action_number
+                    or source.origin_kind is not ActionKind.DOUBLE_START
+                    or source.special_event_id != event.event_id
+                ):
+                    raise ValueError("special event source linkage is inconsistent")
+            elif source is not None:
+                raise ValueError("captured special event source remains on board")
+
+            event_by_source[event.source_stone_id] = event
+            used_double[event.owner] += 1
+
+        for source_id in double_source_ids:
+            stone = board_by_source[source_id]
+            event = event_by_source.get(source_id)
+            if event is None or event.event_id != stone.special_event_id:
+                raise ValueError("Double stone source must link to its ledger event")
+
+        expected_used = PlayerQuotas(
+            black=SpecialQuotas(
+                immortal=0,
+                double_start=used_double[Color.BLACK],
+                eightway=0,
+            ),
+            white=SpecialQuotas(
+                immortal=0,
+                double_start=used_double[Color.WHITE],
+                eightway=0,
+            ),
+        )
+        if self.used_quotas != expected_used:
+            raise ValueError("used Double quotas must exactly match the ledger")
+
+        if self.pending_double is None:
+            if (
+                self.ledger
+                and self.ledger[-1].origin_action_number >= self.atomic_action_count
+            ):
+                raise ValueError("a Double start requires its committed continuation")
+            return
+        if self.phase is not Phase.COLLAPSE_PLAY:
+            raise ValueError("pending Double requires collapse play")
+        if self.actor is not self.pending_double.owner:
+            raise ValueError("pending Double owner must remain the current actor")
+        if not self.ledger or self.ledger[-1].event_id != self.pending_double.event_id:
+            raise ValueError("pending Double must link to the newest ledger event")
+        linked = self.ledger[-1]
+        if (
+            linked.owner is not self.pending_double.owner
+            or linked.origin_action_number != self.pending_double.start_action_number
+            or linked.stone_state is not StoneState.ON_BOARD
+        ):
+            raise ValueError("pending Double linkage is inconsistent")
+        if self.atomic_action_count != self.pending_double.start_action_number:
+            raise ValueError("pending Double must immediately follow its start action")
+        if self.consecutive_passes != 0:
+            raise ValueError("Double start must reset the pass streak")
+
     def _validate_post_settlement_quotas(self) -> None:
         if self.remaining_quotas != PlayerQuotas.zero():
-            raise ValueError("all remaining quotas expire at empty-ledger settlement")
-        if self.expired_quotas != self.initial_quotas:
-            raise ValueError("expired quotas must preserve the configured unused quotas")
+            raise ValueError("all remaining quotas expire at settlement")
 
     @property
     def threshold(self) -> int:
@@ -993,6 +1180,16 @@ def apply_action(
         return _rejected(state, actor, action, RejectionCode.INVALID_PHASE)
     if state.actor is not actor:
         return _rejected(state, actor, action, RejectionCode.WRONG_ACTOR)
+    if state.pending_double is not None and action.kind not in (
+        ActionKind.NORMAL,
+        ActionKind.PASS,
+    ):
+        return _rejected(
+            state,
+            actor,
+            action,
+            RejectionCode.DOUBLE_CONTINUATION_KIND_FORBIDDEN,
+        )
 
     if action.kind in _SPECIAL_KINDS:
         if (
@@ -1002,24 +1199,27 @@ def apply_action(
             return _rejected(state, actor, action, RejectionCode.DOUBLE_THRESHOLD)
         if state.remaining_quotas.for_player(actor).for_kind(action.kind) == 0:
             return _rejected(state, actor, action, RejectionCode.QUOTA_EXHAUSTED)
-        point = _board_index(state.board.size, action)
-        if state.board.color_at(point) is not None:
-            return _rejected(state, actor, action, RejectionCode.POINT_OCCUPIED)
         if action.kind is ActionKind.DOUBLE_START:
-            board_after, _, own_survives = _simulate_placement(
-                state.board,
+            prepared = _prepare_n4_placement(
+                state,
                 actor,
-                point,
-                origin_action_number=state.atomic_action_count + 1,
+                action,
                 origin_kind=ActionKind.DOUBLE_START,
                 special_event_id=f"special-{state.atomic_action_count + 1}",
             )
-            if not own_survives:
-                return _rejected(state, actor, action, RejectionCode.SUICIDE)
-            if board_after.occupancy in state.psk_history:
-                return _rejected(
-                    state, actor, action, RejectionCode.POSITIONAL_SUPERKO
-                )
+            if isinstance(prepared, RejectionCode):
+                return _rejected(state, actor, action, prepared)
+            board_after, captured_stones = prepared
+            return _commit_double_start(
+                state,
+                actor,
+                action,
+                board_after,
+                captured_stones,
+            )
+        point = _board_index(state.board.size, action)
+        if state.board.color_at(point) is not None:
+            return _rejected(state, actor, action, RejectionCode.POINT_OCCUPIED)
         raise UnsupportedSliceAction(action, actor)
 
     if action.kind is ActionKind.PASS:
@@ -1027,28 +1227,162 @@ def apply_action(
     if action.kind is not ActionKind.NORMAL:
         raise AssertionError(f"unhandled action kind {action.kind.value}")
 
-    point = _board_index(state.board.size, action)
-    if state.board.color_at(point) is not None:
-        return _rejected(state, actor, action, RejectionCode.POINT_OCCUPIED)
-
-    board_after, captured_stones, own_survives = _simulate_placement(
-        state.board,
+    prepared = _prepare_n4_placement(
+        state,
         actor,
-        point,
-        origin_action_number=state.atomic_action_count + 1,
+        action,
         origin_kind=ActionKind.NORMAL,
         special_event_id=None,
     )
-    if not own_survives:
-        return _rejected(state, actor, action, RejectionCode.SUICIDE)
-    if board_after.occupancy in state.psk_history:
-        return _rejected(state, actor, action, RejectionCode.POSITIONAL_SUPERKO)
+    if isinstance(prepared, RejectionCode):
+        return _rejected(state, actor, action, prepared)
+    board_after, captured_stones = prepared
     return _commit_normal(
         state,
         actor,
         action,
         board_after,
         captured_stones,
+    )
+
+
+def _prepare_n4_placement(
+    state: OracleState,
+    actor: Color,
+    action: DecodedAction,
+    *,
+    origin_kind: ActionKind,
+    special_event_id: str | None,
+) -> tuple[Board, tuple[Stone, ...]] | RejectionCode:
+    point = _board_index(state.board.size, action)
+    if state.board.color_at(point) is not None:
+        return RejectionCode.POINT_OCCUPIED
+    board_after, captured_stones, own_survives = _simulate_placement(
+        state.board,
+        actor,
+        point,
+        origin_action_number=state.atomic_action_count + 1,
+        origin_kind=origin_kind,
+        special_event_id=special_event_id,
+    )
+    if not own_survives:
+        return RejectionCode.SUICIDE
+    if board_after.occupancy in state.psk_history:
+        return RejectionCode.POSITIONAL_SUPERKO
+    return board_after, captured_stones
+
+
+def _build_point_action_event(
+    state: OracleState,
+    actor: Color,
+    action: DecodedAction,
+    board_after: Board,
+    captured_stones: tuple[Stone, ...],
+) -> tuple[AtomicActionEvent, tuple[Occupancy, ...]]:
+    action_number = state.atomic_action_count + 1
+    history = state.psk_history + (board_after.occupancy,)
+    placed_stone = board_after.stone_at(_board_index(board_after.size, action))
+    if placed_stone is None:
+        raise AssertionError("accepted placement source is absent from the stable board")
+    return (
+        AtomicActionEvent(
+            action_number=action_number,
+            actor=actor,
+            action=action,
+            captured=_occupancy_from_stones(captured_stones),
+            captured_stones=captured_stones,
+            placed_stone=placed_stone,
+            stable_occupancy=board_after.occupancy,
+            stable_stones=board_after.stones,
+            psk_history_index=len(history) - 1,
+            revision=state.revision + 1,
+            log_position=state.log_position + 1,
+        ),
+        history,
+    )
+
+
+def _commit_double_start(
+    state: OracleState,
+    actor: Color,
+    action: DecodedAction,
+    board_after: Board,
+    captured_stones: tuple[Stone, ...],
+) -> Transition:
+    atomic_event, history = _build_point_action_event(
+        state,
+        actor,
+        action,
+        board_after,
+        captured_stones,
+    )
+    action_number = atomic_event.action_number
+    placed_stone = atomic_event.placed_stone
+    if placed_stone is None:
+        raise AssertionError("point action event must contain its placed source")
+    event_id = f"special-{action_number}"
+    if (
+        placed_stone.origin_kind is not ActionKind.DOUBLE_START
+        or placed_stone.special_event_id != event_id
+    ):
+        raise AssertionError("accepted Double source has inconsistent event linkage")
+
+    ledger = _ledger_after_captures(state.ledger, captured_stones) + (
+        SpecialEvent(
+            event_id=event_id,
+            logical_order=action_number - 1,
+            owner=actor,
+            kind=ActionKind.DOUBLE_START,
+            source_point=placed_stone.point,
+            source_stone_id=placed_stone.source_id,
+            ability_state=AbilityState.CONSUMED,
+            stone_state=StoneState.ON_BOARD,
+            settlement_state=SettlementState.PENDING,
+            tombstone=True,
+        ),
+    )
+    remaining_quotas = _replace_double_quota(
+        state.remaining_quotas,
+        actor,
+        state.remaining_quotas.for_player(actor).double_start - 1,
+    )
+    used_quotas = _replace_double_quota(
+        state.used_quotas,
+        actor,
+        state.used_quotas.for_player(actor).double_start + 1,
+    )
+    next_state = OracleState(
+        config=state.config,
+        board=board_after,
+        actor=actor,
+        phase=state.phase,
+        atomic_action_count=action_number,
+        consecutive_passes=0,
+        initial_quotas=state.initial_quotas,
+        remaining_quotas=remaining_quotas,
+        used_quotas=used_quotas,
+        expired_quotas=state.expired_quotas,
+        ledger=ledger,
+        pending_double=PendingDouble(
+            owner=actor,
+            event_id=event_id,
+            start_action_number=action_number,
+        ),
+        settled_ledger_count=state.settled_ledger_count,
+        stable_terminal_event_count=state.stable_terminal_event_count,
+        psk_history=history,
+        revision=atomic_event.revision,
+        log_position=atomic_event.log_position,
+    )
+    return Transition(
+        accepted=True,
+        action=action,
+        candidate_actor=actor,
+        state=next_state,
+        rejection_code=None,
+        atomic_event=atomic_event,
+        settlement=None,
+        terminal_event=None,
     )
 
 
@@ -1059,50 +1393,30 @@ def _commit_normal(
     board_after: Board,
     captured_stones: tuple[Stone, ...],
 ) -> Transition:
-    action_number = state.atomic_action_count + 1
-    next_revision = state.revision + 1
-    next_log_position = state.log_position + 1
-    history = state.psk_history + (board_after.occupancy,)
-    placed_stone = board_after.stone_at(_board_index(board_after.size, action))
-    if placed_stone is None:
-        raise AssertionError("accepted placement source is absent from the stable board")
-    event = AtomicActionEvent(
-        action_number=action_number,
-        actor=actor,
-        action=action,
-        captured=_occupancy_from_stones(captured_stones),
-        captured_stones=captured_stones,
-        placed_stone=placed_stone,
-        stable_occupancy=board_after.occupancy,
-        stable_stones=board_after.stones,
-        psk_history_index=len(history) - 1,
-        revision=next_revision,
-        log_position=next_log_position,
+    atomic_event, history = _build_point_action_event(
+        state,
+        actor,
+        action,
+        board_after,
+        captured_stones,
     )
+    action_number = atomic_event.action_number
+    ledger = _ledger_after_captures(state.ledger, captured_stones)
     settlement_reason = _settlement_reason(
         state.phase, action_number, state.threshold, consecutive_passes=0
     )
     if settlement_reason is not None:
-        next_state = OracleState(
-            config=state.config,
-            board=board_after,
-            actor=actor.opponent(),
-            phase=Phase.ORDINARY_PLAY,
-            atomic_action_count=action_number,
-            consecutive_passes=0,
-            initial_quotas=state.initial_quotas,
-            remaining_quotas=PlayerQuotas.zero(),
-            used_quotas=state.used_quotas,
-            expired_quotas=state.initial_quotas,
-            ledger=state.ledger,
-            pending_double=None,
-            settled_ledger_count=state.settled_ledger_count,
-            stable_terminal_event_count=state.stable_terminal_event_count,
-            psk_history=history,
-            revision=next_revision,
-            log_position=next_log_position,
+        next_state, settlement = _settle_after_action(
+            state,
+            board_after=board_after,
+            handoff_actor=actor.opponent(),
+            action_number=action_number,
+            ledger=ledger,
+            history_after_action=history,
+            next_revision=atomic_event.revision,
+            action_log_position=atomic_event.log_position,
+            reason=settlement_reason,
         )
-        settlement = SettlementResult(reason=settlement_reason)
     else:
         next_state = OracleState(
             config=state.config,
@@ -1115,13 +1429,13 @@ def _commit_normal(
             remaining_quotas=state.remaining_quotas,
             used_quotas=state.used_quotas,
             expired_quotas=state.expired_quotas,
-            ledger=state.ledger,
-            pending_double=state.pending_double,
+            ledger=ledger,
+            pending_double=None,
             settled_ledger_count=state.settled_ledger_count,
             stable_terminal_event_count=state.stable_terminal_event_count,
             psk_history=history,
-            revision=next_revision,
-            log_position=next_log_position,
+            revision=atomic_event.revision,
+            log_position=atomic_event.log_position,
         )
         settlement = None
     return Transition(
@@ -1130,7 +1444,7 @@ def _commit_normal(
         candidate_actor=actor,
         state=next_state,
         rejection_code=None,
-        atomic_event=event,
+        atomic_event=atomic_event,
         settlement=settlement,
         terminal_event=None,
     )
@@ -1164,24 +1478,16 @@ def _commit_pass(
         state.phase, action_number, state.threshold, consecutive_passes
     )
     if settlement_reason is not None:
-        next_state = OracleState(
-            config=state.config,
-            board=state.board,
-            actor=actor.opponent(),
-            phase=Phase.ORDINARY_PLAY,
-            atomic_action_count=action_number,
-            consecutive_passes=0,
-            initial_quotas=state.initial_quotas,
-            remaining_quotas=PlayerQuotas.zero(),
-            used_quotas=state.used_quotas,
-            expired_quotas=state.initial_quotas,
+        next_state, settlement = _settle_after_action(
+            state,
+            board_after=state.board,
+            handoff_actor=actor.opponent(),
+            action_number=action_number,
             ledger=state.ledger,
-            pending_double=None,
-            settled_ledger_count=state.settled_ledger_count,
-            stable_terminal_event_count=state.stable_terminal_event_count,
-            psk_history=history_after_action,
-            revision=next_revision,
-            log_position=action_log_position,
+            history_after_action=history_after_action,
+            next_revision=next_revision,
+            action_log_position=action_log_position,
+            reason=settlement_reason,
         )
         return Transition(
             accepted=True,
@@ -1190,7 +1496,7 @@ def _commit_pass(
             state=next_state,
             rejection_code=None,
             atomic_event=event,
-            settlement=SettlementResult(reason=settlement_reason),
+            settlement=settlement,
             terminal_event=None,
         )
 
@@ -1227,7 +1533,7 @@ def _commit_pass(
             used_quotas=state.used_quotas,
             expired_quotas=state.expired_quotas,
             ledger=state.ledger,
-            pending_double=state.pending_double,
+            pending_double=None,
             settled_ledger_count=state.settled_ledger_count,
             stable_terminal_event_count=state.stable_terminal_event_count + 1,
             psk_history=terminal_history,
@@ -1258,7 +1564,7 @@ def _commit_pass(
         used_quotas=state.used_quotas,
         expired_quotas=state.expired_quotas,
         ledger=state.ledger,
-        pending_double=state.pending_double,
+        pending_double=None,
         settled_ledger_count=state.settled_ledger_count,
         stable_terminal_event_count=state.stable_terminal_event_count,
         psk_history=history_after_action,
@@ -1274,6 +1580,80 @@ def _commit_pass(
         atomic_event=event,
         settlement=None,
         terminal_event=None,
+    )
+
+
+def _settle_after_action(
+    state: OracleState,
+    *,
+    board_after: Board,
+    handoff_actor: Color,
+    action_number: int,
+    ledger: tuple[SpecialEvent, ...],
+    history_after_action: tuple[Occupancy, ...],
+    next_revision: int,
+    action_log_position: int,
+    reason: SettlementReason,
+) -> tuple[OracleState, SettlementResult]:
+    settled_ledger = list(ledger)
+    settled_count = len(settled_ledger)
+    steps: list[SettlementStepEvent] = []
+    for index in range(settled_count - 1, -1, -1):
+        event = settled_ledger[index]
+        if event.settlement_state is not SettlementState.PENDING:
+            raise AssertionError("settlement encountered an already-settled event")
+        settled_event = replace(
+            event,
+            ability_state=AbilityState.INACTIVE,
+            settlement_state=SettlementState.SETTLED,
+        )
+        settled_ledger[index] = settled_event
+        step_offset = len(steps) + 1
+        steps.append(
+            SettlementStepEvent(
+                event_id=settled_event.event_id,
+                logical_order=settled_event.logical_order,
+                owner=settled_event.owner,
+                kind=settled_event.kind,
+                ability_deactivated=False,
+                no_op=True,
+                stable_occupancy=board_after.occupancy,
+                stable_stones=board_after.stones,
+                psk_history_index=len(history_after_action) - 1 + step_offset,
+                revision=next_revision,
+                log_position=action_log_position + step_offset,
+            )
+        )
+    history = history_after_action + (board_after.occupancy,) * settled_count
+    log_position = action_log_position + settled_count
+
+    next_state = OracleState(
+        config=state.config,
+        board=board_after,
+        actor=handoff_actor,
+        phase=Phase.ORDINARY_PLAY,
+        atomic_action_count=action_number,
+        consecutive_passes=0,
+        initial_quotas=state.initial_quotas,
+        remaining_quotas=PlayerQuotas.zero(),
+        used_quotas=state.used_quotas,
+        expired_quotas=_add_player_quotas(
+            state.expired_quotas,
+            state.remaining_quotas,
+        ),
+        ledger=tuple(settled_ledger),
+        pending_double=None,
+        settled_ledger_count=state.settled_ledger_count + settled_count,
+        stable_terminal_event_count=state.stable_terminal_event_count,
+        psk_history=history,
+        revision=next_revision,
+        log_position=log_position,
+    )
+    return next_state, SettlementResult(
+        reason=reason,
+        ledger_entry_count=settled_count,
+        psk_appends=settled_count,
+        steps=tuple(steps),
     )
 
 
@@ -1384,6 +1764,59 @@ def _occupancy_from_stones(stones: Iterable[Stone]) -> Occupancy:
     return Occupancy(black=tuple(sorted(black)), white=tuple(sorted(white)))
 
 
+def _ledger_after_captures(
+    ledger: tuple[SpecialEvent, ...],
+    captured_stones: tuple[Stone, ...],
+) -> tuple[SpecialEvent, ...]:
+    captured_source_ids = {
+        stone.source_id
+        for stone in captured_stones
+        if stone.special_event_id is not None
+    }
+    if not captured_source_ids:
+        return ledger
+    matched: set[str] = set()
+    updated: list[SpecialEvent] = []
+    for event in ledger:
+        if event.source_stone_id in captured_source_ids:
+            matched.add(event.source_stone_id)
+            updated.append(replace(event, stone_state=StoneState.CAPTURED))
+        else:
+            updated.append(event)
+    if matched != captured_source_ids:
+        raise AssertionError("captured special source is absent from the ledger")
+    return tuple(updated)
+
+
+def _replace_double_quota(
+    quotas: PlayerQuotas,
+    player: Color,
+    value: int,
+) -> PlayerQuotas:
+    current = quotas.for_player(player)
+    updated = replace(current, double_start=value)
+    if player is Color.BLACK:
+        return replace(quotas, black=updated)
+    return replace(quotas, white=updated)
+
+
+def _add_player_quotas(left: PlayerQuotas, right: PlayerQuotas) -> PlayerQuotas:
+    def add_special(
+        left_special: SpecialQuotas,
+        right_special: SpecialQuotas,
+    ) -> SpecialQuotas:
+        return SpecialQuotas(
+            immortal=left_special.immortal + right_special.immortal,
+            double_start=left_special.double_start + right_special.double_start,
+            eightway=left_special.eightway + right_special.eightway,
+        )
+
+    return PlayerQuotas(
+        black=add_special(left.black, right.black),
+        white=add_special(left.white, right.white),
+    )
+
+
 def _validate_quota_conservation(
     initial: PlayerQuotas,
     remaining: PlayerQuotas,
@@ -1476,6 +1909,7 @@ __all__ = [
     "SettlementReason",
     "SettlementResult",
     "SettlementState",
+    "SettlementStepEvent",
     "SpecialEvent",
     "SpecialQuotas",
     "Stone",

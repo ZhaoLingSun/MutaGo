@@ -33,14 +33,10 @@ CollapseGoApplyError simulateN4Placement(
   const CollapseGoState& state,
   int point,
   Player actor,
-  GameActionKind kind,
+  const CollapseGoStoneSource& source,
   CollapseGoPosition& tentativePosition,
   vector<int>& capturedPoints
 ) {
-  optional<int64_t> specialLink;
-  if(kind != GameActionKind::NORMAL)
-    specialLink = state.getAtomicActionCount() + 1;
-  CollapseGoStoneSource source(state.getAtomicActionCount() + 1,kind,specialLink);
   tentativePosition.placeStone(point,actor,source);
 
   CollapseGoTopology firstTopology = CollapseGoTopology::fullScanN4(tentativePosition);
@@ -69,10 +65,31 @@ CollapseGoApplyError simulateN4Placement(
 
 }
 
+CollapseGoSettlementStep::CollapseGoSettlementStep(const CollapseGoLedgerEntry& entry)
+  : specialLink(entry.specialLink),
+    originActionNumber(entry.originActionNumber),
+    owner(entry.owner),
+    originKind(entry.originKind),
+    sourcePoint(entry.sourcePoint),
+    noOp(true),
+    abilityDeactivated(false)
+{}
+
+bool CollapseGoSettlementStep::operator==(const CollapseGoSettlementStep& other) const {
+  return specialLink == other.specialLink && originActionNumber == other.originActionNumber &&
+    owner == other.owner && originKind == other.originKind && sourcePoint == other.sourcePoint &&
+    noOp == other.noOp && abilityDeactivated == other.abilityDeactivated;
+}
+
+bool CollapseGoSettlementStep::operator!=(const CollapseGoSettlementStep& other) const {
+  return !(*this == other);
+}
+
 CollapseGoApplyResult::CollapseGoApplyResult()
   : accepted(false),
     error(CollapseGoApplyError::INTERNAL_INVARIANT),
     capturedStones(),
+    settlementSteps(),
     settlementTriggered(false),
     settlementReason(CollapseGoSettlementReason::NONE),
     terminalScoreEventEmitted(false),
@@ -95,6 +112,7 @@ string CollapseGoApplyResult::getErrorCode() const {
   case CollapseGoApplyError::TERMINAL_STATE: return "TERMINAL_STATE";
   case CollapseGoApplyError::INVALID_PHASE: return "INVALID_PHASE";
   case CollapseGoApplyError::WRONG_ACTOR: return "WRONG_ACTOR";
+  case CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN: return "DOUBLE_CONTINUATION_KIND_FORBIDDEN";
   case CollapseGoApplyError::DOUBLE_THRESHOLD: return "DOUBLE_THRESHOLD";
   case CollapseGoApplyError::QUOTA_EXHAUSTED: return "QUOTA_EXHAUSTED";
   case CollapseGoApplyError::POINT_OCCUPIED: return "POINT_OCCUPIED";
@@ -123,21 +141,77 @@ CollapseGoAbility CollapseGoReducer::abilityForAction(GameActionKind kind) {
   }
 }
 
-void CollapseGoReducer::completeEmptyLedgerSettlement(
+void CollapseGoReducer::appendCurrentOccupancy(CollapseGoState& state) {
+  state.positionalSuperkoHistory.append(PositionalSuperkoKey(
+    state.position.getBoardSize(),
+    state.position.getRowMajorOccupancy()
+  ));
+}
+
+void CollapseGoReducer::markCapturedDoubleSources(
+  CollapseGoState& state,
+  const CollapseGoPosition& previousPosition,
+  const vector<int>& capturedPoints
+) {
+  for(int point: capturedPoints) {
+    const CollapseGoCell& capturedCell = previousPosition.getCell(point);
+    if(!capturedCell.isOccupied())
+      throw StringError("Collapse Go capture list refers to an empty source cell");
+    const CollapseGoStoneSource& source = capturedCell.getSource();
+    if(source.originKind != GameActionKind::DOUBLE_START)
+      continue;
+    if(!source.specialLink.has_value())
+      throw StringError("Collapse Go captured Double source is missing its ledger link");
+
+    bool found = false;
+    for(CollapseGoLedgerEntry& entry: state.ledger.entries) {
+      if(entry.specialLink == *source.specialLink) {
+        if(entry.owner != capturedCell.getColor() || entry.originActionNumber != source.originActionNumber ||
+           entry.sourcePoint != point || entry.stoneState != CollapseGoLedgerStoneState::ON_BOARD)
+          throw StringError("Collapse Go captured Double source does not match its ledger lifecycle");
+        entry.stoneState = CollapseGoLedgerStoneState::CAPTURED;
+        found = true;
+        break;
+      }
+    }
+    if(!found)
+      throw StringError("Collapse Go captured Double source has no ledger entry");
+  }
+}
+
+void CollapseGoReducer::completeLedgerSettlement(
   CollapseGoState& state,
   CollapseGoSettlementReason reason,
   CollapseGoApplyResult& result
 ) {
-  if(!state.ledger.empty())
-    throw StringError("Increment 0 empty-ledger settlement received a nonempty ledger");
-  state.phase = CollapseGoPhase::ORDINARY_PLAY;
-  state.consecutivePasses = 0;
-  state.settlementCompleted = true;
-  expireRemainingQuotas(state.blackRemainingQuotas,state.blackExpiredQuotas);
-  expireRemainingQuotas(state.whiteRemainingQuotas,state.whiteExpiredQuotas);
+  if(state.pendingDouble.has_value())
+    throw StringError("Collapse Go settlement cannot interrupt a pending Double continuation");
 
   result.settlementTriggered = true;
   result.settlementReason = reason;
+  state.consecutivePasses = 0;
+
+  while(state.settledLedgerCount < static_cast<int64_t>(state.ledger.size())) {
+    size_t index = state.ledger.size() - 1 - static_cast<size_t>(state.settledLedgerCount);
+    CollapseGoLedgerEntry& entry = state.ledger.entries[index];
+    if(entry.originKind != GameActionKind::DOUBLE_START ||
+       entry.abilityState != CollapseGoLedgerAbilityState::CONSUMED ||
+       entry.settlementState != CollapseGoLedgerSettlementState::PENDING || !entry.tombstone)
+      throw StringError("Collapse Go Double settlement encountered an inconsistent ledger entry");
+
+    result.settlementSteps.push_back(CollapseGoSettlementStep(entry));
+    entry.abilityState = CollapseGoLedgerAbilityState::INACTIVE;
+    entry.settlementState = CollapseGoLedgerSettlementState::SETTLED;
+    state.settledLedgerCount++;
+    state.logPosition++;
+    appendCurrentOccupancy(state);
+    result.positionalSuperkoAppends++;
+  }
+
+  expireRemainingQuotas(state.blackRemainingQuotas,state.blackExpiredQuotas);
+  expireRemainingQuotas(state.whiteRemainingQuotas,state.whiteExpiredQuotas);
+  state.settlementCompleted = true;
+  state.phase = CollapseGoPhase::ORDINARY_PLAY;
 }
 
 CollapseGoScore CollapseGoReducer::scoreChineseArea(const CollapseGoPosition& position) {
@@ -213,7 +287,7 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
   const bool isSpecialAction = kind == GameActionKind::IMMORTAL ||
     kind == GameActionKind::DOUBLE_START || kind == GameActionKind::EIGHTWAY;
 
-  // The descriptor requires footprint rejection before terminal, phase, or actor checks.
+  // Frozen precedence begins with footprint, then terminal, phase, actor, and contextual continuation kind.
   if(isPointAction && !action.isInBoardFootprint(boardSize))
     return reject(CollapseGoApplyError::POINT_OFF_BOARD);
   if(state.phase == CollapseGoPhase::TERMINAL)
@@ -222,6 +296,8 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     return reject(CollapseGoApplyError::INVALID_PHASE);
   if(actor != state.actor)
     return reject(CollapseGoApplyError::WRONG_ACTOR);
+  if(state.pendingDouble.has_value() && kind != GameActionKind::NORMAL && kind != GameActionKind::PASS)
+    return reject(CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN);
 
   int point = -1;
   if(isPointAction) {
@@ -239,29 +315,63 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     if(!state.position.isEmpty(point))
       return reject(CollapseGoApplyError::POINT_OCCUPIED);
 
-    if(kind == GameActionKind::DOUBLE_START) {
-      CollapseGoPosition tentativePosition(state.position);
-      vector<int> ignoredCaptures;
-      CollapseGoApplyError simulationError = simulateN4Placement(
-        state,point,actor,kind,tentativePosition,ignoredCaptures
-      );
-      if(simulationError != CollapseGoApplyError::NONE)
-        return reject(simulationError);
+    if(kind != GameActionKind::DOUBLE_START)
+      return reject(CollapseGoApplyError::UNSUPPORTED_BY_SLICE);
+
+    CollapseGoState candidate(state);
+    vector<int> capturedPoints;
+    const int64_t originActionNumber = state.atomicActionCount + 1;
+    const int64_t specialLink = originActionNumber;
+    CollapseGoStoneSource source(originActionNumber,GameActionKind::DOUBLE_START,specialLink);
+    CollapseGoApplyError simulationError = simulateN4Placement(
+      state,point,actor,source,candidate.position,capturedPoints
+    );
+    if(simulationError != CollapseGoApplyError::NONE)
+      return reject(simulationError);
+    markCapturedDoubleSources(candidate,state.position,capturedPoints);
+
+    CollapseGoQuotas& remaining = actor == P_BLACK ? candidate.blackRemainingQuotas : candidate.whiteRemainingQuotas;
+    CollapseGoQuotas& used = actor == P_BLACK ? candidate.blackUsedQuotas : candidate.whiteUsedQuotas;
+    remaining.doubleMove--;
+    used.doubleMove++;
+    candidate.ledger.append(CollapseGoLedgerEntry(
+      specialLink,originActionNumber,actor,GameActionKind::DOUBLE_START,point
+    ));
+    candidate.pendingDouble = CollapseGoPendingDouble(actor,specialLink,originActionNumber);
+    candidate.atomicActionCount++;
+    candidate.revision++;
+    candidate.logPosition++;
+    candidate.consecutivePasses = 0;
+    appendCurrentOccupancy(candidate);
+
+    CollapseGoApplyResult result;
+    result.accepted = true;
+    result.error = CollapseGoApplyError::NONE;
+    result.positionalSuperkoAppends = 1;
+    for(int capturedPoint: capturedPoints) {
+      result.capturedStones.push_back(Location::getLoc(
+        candidate.position.getX(capturedPoint),
+        candidate.position.getY(capturedPoint),
+        boardSize
+      ));
     }
-    return reject(CollapseGoApplyError::UNSUPPORTED_BY_SLICE);
+
+    candidate.checkConsistency();
+    state = candidate;
+    return result;
   }
 
   if(kind == GameActionKind::PASS) {
     CollapseGoState candidate(state);
+    const bool isDoubleContinuation = candidate.pendingDouble.has_value();
     candidate.atomicActionCount++;
     candidate.revision++;
     candidate.logPosition++;
     candidate.consecutivePasses++;
+    if(isDoubleContinuation)
+      candidate.pendingDouble.reset();
     candidate.actor = getOpp(actor);
-    candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
-      candidate.position.getBoardSize(),
-      candidate.position.getRowMajorOccupancy()
-    ));
+    appendCurrentOccupancy(candidate);
 
     CollapseGoApplyResult result;
     result.accepted = true;
@@ -270,9 +380,9 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
 
     if(candidate.phase == CollapseGoPhase::COLLAPSE_PLAY) {
       if(candidate.atomicActionCount == candidate.config.getThreshold())
-        completeEmptyLedgerSettlement(candidate,CollapseGoSettlementReason::THRESHOLD,result);
+        completeLedgerSettlement(candidate,CollapseGoSettlementReason::THRESHOLD,result);
       else if(candidate.atomicActionCount < candidate.config.getThreshold() && candidate.consecutivePasses == 2)
-        completeEmptyLedgerSettlement(candidate,CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES,result);
+        completeLedgerSettlement(candidate,CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES,result);
     }
     else if(candidate.phase == CollapseGoPhase::ORDINARY_PLAY && candidate.consecutivePasses == 2) {
       candidate.score = scoreChineseArea(candidate.position);
@@ -280,10 +390,7 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
       candidate.actor = C_EMPTY;
       candidate.stableTerminalEventCount++;
       candidate.logPosition++;
-      candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
-        candidate.position.getBoardSize(),
-        candidate.position.getRowMajorOccupancy()
-      ));
+      appendCurrentOccupancy(candidate);
       result.terminalScoreEventEmitted = true;
       result.positionalSuperkoAppends++;
     }
@@ -300,11 +407,13 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
 
   CollapseGoState candidate(state);
   vector<int> capturedPoints;
+  CollapseGoStoneSource source(state.atomicActionCount + 1,GameActionKind::NORMAL,nullopt);
   CollapseGoApplyError simulationError = simulateN4Placement(
-    state,point,actor,kind,candidate.position,capturedPoints
+    state,point,actor,source,candidate.position,capturedPoints
   );
   if(simulationError != CollapseGoApplyError::NONE)
     return reject(simulationError);
+  markCapturedDoubleSources(candidate,state.position,capturedPoints);
 
   CollapseGoApplyResult result;
   result.accepted = true;
@@ -318,19 +427,19 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     ));
   }
 
+  const bool isDoubleContinuation = candidate.pendingDouble.has_value();
   candidate.atomicActionCount++;
   candidate.revision++;
   candidate.logPosition++;
   candidate.consecutivePasses = 0;
+  if(isDoubleContinuation)
+    candidate.pendingDouble.reset();
   candidate.actor = getOpp(actor);
-  candidate.positionalSuperkoHistory.append(PositionalSuperkoKey(
-    candidate.position.getBoardSize(),
-    candidate.position.getRowMajorOccupancy()
-  ));
+  appendCurrentOccupancy(candidate);
 
   if(candidate.phase == CollapseGoPhase::COLLAPSE_PLAY &&
      candidate.atomicActionCount == candidate.config.getThreshold())
-    completeEmptyLedgerSettlement(candidate,CollapseGoSettlementReason::THRESHOLD,result);
+    completeLedgerSettlement(candidate,CollapseGoSettlementReason::THRESHOLD,result);
 
   candidate.checkConsistency();
   state = candidate;

@@ -13,6 +13,8 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -82,6 +84,7 @@ MAX_RESPONSE_FRAME_BYTES = 16 * 1024 * 1024
 MAX_PROBE_STDOUT_BYTES = 64 * 1024 * 1024
 MAX_PROBE_STDERR_BYTES = 1024 * 1024
 PROBE_TIMEOUT_SECONDS = 180
+PROCESS_CLEANUP_RESERVE_SECONDS = 0.25
 SAFE_INTEGER_MIN = -9007199254740991
 SAFE_INTEGER_MAX = 9007199254740991
 REQUEST_FIELDS = frozenset(
@@ -161,6 +164,18 @@ class ProtocolError(ValueError):
 
 class ProbeError(RuntimeError):
     """The standalone probe failed or violated its process contract."""
+
+
+class ProbeOutputDecodeError(ProbeError):
+    """Probe bytes were not UTF-8; retain a response index for diagnostics."""
+
+    def __init__(self, stream_name: str, byte_offset: int, response_index: int) -> None:
+        self.stream_name = stream_name
+        self.byte_offset = byte_offset
+        self.response_index = response_index
+        super().__init__(
+            f"probe {stream_name} is not UTF-8 at byte {byte_offset}"
+        )
 
 
 class DifferentialMismatch(AssertionError):
@@ -255,7 +270,9 @@ class _EpisodeBuilder:
         decode_action_v1(step["action"], self.board_size)
         self.steps.append(step)
         try:
-            transition = apply_action(self.state, candidate_actor, step["action"])
+            transition = _apply_v0_slice_action(
+                self.state, candidate_actor, step["action"]
+            )
         except UnsupportedSliceAction:
             return
         self.state = transition.state
@@ -614,6 +631,28 @@ def parse_canonical_response_line(
     return validate_episode_response(parsed, request)
 
 
+def _apply_v0_slice_action(
+    state: OracleState,
+    candidate_actor: Color,
+    envelope: Mapping[str, object],
+):
+    """Preserve the original NORMAL/PASS v0 boundary around the richer oracle.
+
+    A potentially legal special action remains UNSUPPORTED in this legacy
+    carrier.  Pre-mechanics semantic rejections retain their frozen precedence,
+    and an accepted Double start is discarded rather than changing the episode.
+    """
+
+    transition = apply_action(state, candidate_actor, envelope)
+    if transition.accepted and transition.action.kind in (
+        ActionKind.IMMORTAL,
+        ActionKind.DOUBLE_START,
+        ActionKind.EIGHTWAY,
+    ):
+        raise UnsupportedSliceAction(transition.action, candidate_actor)
+    return transition
+
+
 def _oracle_config(board_size: int, quota_mode: str) -> OracleConfig:
     if quota_mode == "ZERO":
         quotas = PlayerQuotas.zero()
@@ -683,7 +722,9 @@ def oracle_episode_response(request: object) -> dict[str, object]:
     for step_index, step in enumerate(frame["steps"]):
         candidate_actor = Color(step["candidateActor"])
         try:
-            transition = apply_action(state, candidate_actor, step["action"])
+            transition = _apply_v0_slice_action(
+                state, candidate_actor, step["action"]
+            )
         except UnsupportedSliceAction:
             status = "UNSUPPORTED"
             error_code = "UNSUPPORTED_BY_SLICE"
@@ -1149,12 +1190,31 @@ class _ProbeProcessResult:
 def _run_probe_process(
     command: Sequence[str], probe_input: str, timeout_seconds: float
 ) -> _ProbeProcessResult:
+    if (
+        isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
+        or not math.isfinite(timeout_seconds)
+        or timeout_seconds <= 0
+    ):
+        raise ProbeError("probe timeout must be a finite positive number")
+    final_deadline = time.monotonic() + timeout_seconds
+    cleanup_reserve = min(
+        PROCESS_CLEANUP_RESERVE_SECONDS,
+        max(0.001, timeout_seconds * 0.1),
+    )
+    operation_deadline = final_deadline - cleanup_reserve
+    popen_kwargs: dict[str, object] = {}
+    if os.name == "posix":
+        popen_kwargs["start_new_session"] = True
+    elif hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP"):
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     try:
         process = subprocess.Popen(
             list(command),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            **popen_kwargs,
         )
     except OSError as exc:
         raise ProbeError(f"could not launch probe {command[0]}: {exc}") from exc
@@ -1162,6 +1222,30 @@ def _run_probe_process(
     assert process.stdin is not None
     assert process.stdout is not None
     assert process.stderr is not None
+
+    def signal_process_tree(*, force: bool) -> None:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except OSError:
+                if process.poll() is None:
+                    try:
+                        process.kill() if force else process.terminate()
+                    except OSError:
+                        pass
+        elif process.poll() is None:
+            try:
+                process.kill() if force else process.terminate()
+            except OSError:
+                pass
+
+    def close_pipe_fd(stream) -> None:
+        try:
+            os.close(stream.fileno())
+        except (OSError, ValueError):
+            pass
 
     overflow = threading.Event()
     overflow_streams: list[str] = []
@@ -1192,7 +1276,10 @@ def _run_probe_process(
             stream_errors.append((stream_name, exc))
             overflow.set()
         finally:
-            stream.close()
+            try:
+                stream.close()
+            except OSError:
+                pass
 
     writer_errors: list[BaseException] = []
 
@@ -1220,33 +1307,58 @@ def _run_probe_process(
         daemon=True,
     )
     writer_thread = threading.Thread(target=write_input, daemon=True)
-    stdout_thread.start()
-    stderr_thread.start()
-    writer_thread.start()
+    threads = (writer_thread, stdout_thread, stderr_thread)
+    for thread in threads:
+        thread.start()
 
-    deadline = time.monotonic() + timeout_seconds
     timed_out = False
-    while process.poll() is None:
-        remaining = deadline - time.monotonic()
+    while True:
+        readers_done = not stdout_thread.is_alive() and not stderr_thread.is_alive()
+        writer_done = not writer_thread.is_alive()
+        if overflow.is_set():
+            break
+        remaining = operation_deadline - time.monotonic()
         if remaining <= 0:
             timed_out = True
-            process.kill()
             break
-        if overflow.wait(timeout=min(0.05, remaining)):
-            if process.poll() is None:
-                process.kill()
+        if process.poll() is not None and readers_done and writer_done:
             break
+        overflow.wait(timeout=min(0.05, remaining))
 
-    try:
-        returncode = process.wait(timeout=5)
-    except subprocess.TimeoutExpired as exc:  # pragma: no cover - kill should terminate
-        process.kill()
-        process.wait()
-        raise ProbeError("probe did not terminate after kill") from exc
+    forced_cleanup = timed_out or bool(overflow_streams) or any(
+        thread.is_alive() for thread in threads
+    )
+    if forced_cleanup:
+        signal_process_tree(force=False)
+        grace = max(0.0, min(0.05, final_deadline - time.monotonic()))
+        if grace:
+            try:
+                process.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
+        signal_process_tree(force=True)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            close_pipe_fd(stream)
 
-    writer_thread.join()
-    stdout_thread.join()
-    stderr_thread.join()
+    for thread in threads:
+        thread.join(timeout=max(0.0, final_deadline - time.monotonic()))
+    if any(thread.is_alive() for thread in threads):
+        timed_out = True
+        signal_process_tree(force=True)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            close_pipe_fd(stream)
+
+    remaining = max(0.0, final_deadline - time.monotonic())
+    if process.poll() is None and remaining:
+        try:
+            process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            signal_process_tree(force=True)
+    returncode = process.poll()
+    if returncode is None:
+        timed_out = True
+        returncode = -1
 
     stdout_bytes = b"".join(stdout_chunks)
     stderr_bytes = b"".join(stderr_chunks)
@@ -1271,10 +1383,40 @@ def _run_probe_process(
         raise ProbeError(f"could not write probe input: {writer_errors[0]}")
     try:
         stdout = stdout_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProbeOutputDecodeError(
+            "stdout",
+            exc.start,
+            stdout_bytes[: exc.start].count(b"\n"),
+        ) from exc
+    try:
         stderr = stderr_bytes.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        raise ProbeError(f"probe output is not UTF-8: {exc}") from exc
+        raise ProbeOutputDecodeError("stderr", exc.start, 0) from exc
     return _ProbeProcessResult(returncode, stdout, stderr)
+
+
+def _response_failure_context(
+    manifest: Mapping[str, object],
+    requests: Sequence[Mapping[str, object]],
+    request_lines: Sequence[str],
+    response_index: int,
+) -> str:
+    if not requests:
+        return (
+            f"responseIndex={response_index}; "
+            f"manifest={canonical_json(manifest)}"
+        )
+    request_index = min(max(response_index, 0), len(requests) - 1)
+    return (
+        f"responseIndex={response_index}; "
+        + _reproduction_context(
+            manifest,
+            requests[request_index],
+            request_lines[request_index],
+            len(requests[request_index]["steps"]),
+        )
+    )
 
 
 def run_differential(
@@ -1311,9 +1453,16 @@ def run_differential(
         expected_responses.append(oracle_episode_response(request))
     probe_input = "".join(request_line + "\n" for request_line in request_lines)
 
-    completed = _run_probe_process(
-        [str(probe)], probe_input, PROBE_TIMEOUT_SECONDS
-    )
+    try:
+        completed = _run_probe_process(
+            [str(probe)], probe_input, PROBE_TIMEOUT_SECONDS
+        )
+    except ProbeOutputDecodeError as exc:
+        response_index = exc.response_index if exc.stream_name == "stdout" else 0
+        context = _response_failure_context(
+            manifest, episodes, request_lines, response_index
+        )
+        raise ProbeError(f"{exc}; {context}") from exc
 
     if completed.returncode != 0:
         raise ProbeError(
@@ -1324,12 +1473,20 @@ def run_differential(
             f"probe emitted diagnostics on a successful run: {completed.stderr!r}"
         )
     if not completed.stdout.endswith("\n"):
-        raise ProbeError("probe output is not newline-terminated")
+        response_index = min(completed.stdout.count("\n"), len(episodes))
+        context = _response_failure_context(
+            manifest, episodes, request_lines, response_index
+        )
+        raise ProbeError(f"probe output is not newline-terminated; {context}")
     response_lines = completed.stdout[:-1].split("\n")
     if len(response_lines) != len(episodes):
+        response_index = min(len(response_lines), len(episodes))
+        context = _response_failure_context(
+            manifest, episodes, request_lines, response_index
+        )
         raise ProbeError(
             f"probe emitted {len(response_lines)} response lines for "
-            f"{len(episodes)} episode requests"
+            f"{len(episodes)} episode requests; {context}"
         )
 
     accepted = 0
@@ -1341,14 +1498,17 @@ def run_differential(
     board_candidate_counts = {"9": 0, "13": 0, "19": 0}
     random_action_ids: set[int] = set()
 
-    for request, request_line, expected, response_line in zip(
-        episodes, request_lines, expected_responses, response_lines
-    ):
+    for response_index, (
+        request,
+        request_line,
+        expected,
+        response_line,
+    ) in enumerate(zip(episodes, request_lines, expected_responses, response_lines)):
         try:
             actual = parse_canonical_response_line(response_line, request)
         except ProtocolError as exc:
-            context = _reproduction_context(
-                manifest, request, request_line, len(request["steps"])
+            context = _response_failure_context(
+                manifest, episodes, request_lines, response_index
             )
             raise ProtocolError(f"{exc}; {context}") from exc
         try:

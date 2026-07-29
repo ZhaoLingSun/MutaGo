@@ -13,6 +13,7 @@ enum class CollapseGoApplyError {
   TERMINAL_STATE,
   INVALID_PHASE,
   WRONG_ACTOR,
+  DOUBLE_CONTINUATION_KIND_FORBIDDEN,
   DOUBLE_THRESHOLD,
   QUOTA_EXHAUSTED,
   POINT_OCCUPIED,
@@ -22,10 +23,26 @@ enum class CollapseGoApplyError {
   UNSUPPORTED_BY_SLICE,
 };
 
+struct CollapseGoSettlementStep {
+  int64_t specialLink;
+  int64_t originActionNumber;
+  Player owner;
+  GameActionKind originKind;
+  int sourcePoint;
+  bool noOp;
+  bool abilityDeactivated;
+
+  explicit CollapseGoSettlementStep(const CollapseGoLedgerEntry& entry);
+
+  bool operator==(const CollapseGoSettlementStep& other) const;
+  bool operator!=(const CollapseGoSettlementStep& other) const;
+};
+
 struct CollapseGoApplyResult {
   bool accepted;
   CollapseGoApplyError error;
   std::vector<Loc> capturedStones;
+  std::vector<CollapseGoSettlementStep> settlementSteps;
   bool settlementTriggered;
   CollapseGoSettlementReason settlementReason;
   bool terminalScoreEventEmitted;
@@ -45,7 +62,13 @@ public:
 private:
   static CollapseGoApplyResult reject(CollapseGoApplyError error);
   static CollapseGoAbility abilityForAction(GameActionKind kind);
-  static void completeEmptyLedgerSettlement(
+  static void appendCurrentOccupancy(CollapseGoState& state);
+  static void markCapturedDoubleSources(
+    CollapseGoState& state,
+    const CollapseGoPosition& previousPosition,
+    const std::vector<int>& capturedPoints
+  );
+  static void completeLedgerSettlement(
     CollapseGoState& state,
     CollapseGoSettlementReason reason,
     CollapseGoApplyResult& result

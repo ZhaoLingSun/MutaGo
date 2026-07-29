@@ -25,7 +25,6 @@ from mutago.collapse_go import (  # noqa: E402
     SpecialQuotas,
     Stone,
     StoneState,
-    UnsupportedSliceAction,
     apply_action,
     new_game,
     scan_n4_groups,
@@ -142,6 +141,13 @@ def transform_state(state, symmetry: int):
         board=Board.from_stones(
             size,
             (transform_stone(stone, size, symmetry) for stone in state.board.stones),
+        ),
+        ledger=tuple(
+            replace(
+                event,
+                source_point=transform_point(size, event.source_point, symmetry),
+            )
+            for event in state.ledger
         ),
         psk_history=tuple(
             transform_occupancy(entry, size, symmetry)
@@ -264,7 +270,7 @@ class SourceAwareStateTests(unittest.TestCase):
                 ),
             )
 
-    def test_lifecycle_shell_is_immutable_and_reachable_states_remain_empty(self) -> None:
+    def test_lifecycle_shell_is_immutable_and_double_start_is_reachable(self) -> None:
         event = SpecialEvent(
             event_id="special-1",
             logical_order=0,
@@ -291,12 +297,17 @@ class SourceAwareStateTests(unittest.TestCase):
         self.assertEqual((), state.ledger)
         self.assertIsNone(state.pending_double)
         self.assertEqual(PlayerQuotas.zero(), state.used_quotas)
-        with self.assertRaises(UnsupportedSliceAction):
-            apply_action(
-                state,
-                Color.BLACK,
-                action(ActionKind.DOUBLE_START, x=0, y=0),
-            )
+
+        started = accept(
+            state,
+            Color.BLACK,
+            action(ActionKind.DOUBLE_START, x=0, y=0),
+        )
+        self.assertEqual(1, len(started.state.ledger))
+        self.assertEqual(event, started.state.ledger[0])
+        self.assertEqual(pending, started.state.pending_double)
+        self.assertEqual(1, started.state.used_quotas.black.double_start)
+        self.assertEqual(0, state.atomic_action_count)
         self.assertEqual((), state.ledger)
         self.assertIsNone(state.pending_double)
 
@@ -562,6 +573,32 @@ class DeterministicTopologyAndD4Tests(unittest.TestCase):
                 self.assertEqual(base.state.actor, transformed.state.actor)
                 self.assertEqual(base.state.revision, transformed.state.revision)
                 self.assertEqual(base.state.log_position, transformed.state.log_position)
+
+
+    def test_all_eight_d4_transforms_preserve_double_start_and_continuation(self) -> None:
+        initial = new_game(OracleConfig(board_size=9))
+        start_action = action(ActionKind.DOUBLE_START, x=1, y=2)
+        continuation_action = action(ActionKind.NORMAL, x=3, y=4)
+        started = accept(initial, Color.BLACK, start_action)
+        continued = accept(started.state, Color.BLACK, continuation_action)
+
+        for symmetry in range(8):
+            with self.subTest(symmetry=symmetry):
+                expected_started = transform_state(started.state, symmetry)
+                transformed_start = accept(
+                    transform_state(initial, symmetry),
+                    Color.BLACK,
+                    transform_action(start_action, 9, symmetry),
+                )
+                self.assertEqual(expected_started, transformed_start.state)
+
+                expected_continued = transform_state(continued.state, symmetry)
+                transformed_continuation = accept(
+                    transformed_start.state,
+                    Color.BLACK,
+                    transform_action(continuation_action, 9, symmetry),
+                )
+                self.assertEqual(expected_continued, transformed_continuation.state)
 
 
 class ReplayAndRejectionTests(unittest.TestCase):

@@ -8,6 +8,8 @@
 #include "../game/collapsegoposition.h"
 #include "../game/positionalsuperko.h"
 
+class CollapseGoStateTestAccess;
+
 struct CollapseGoQuotas {
   int64_t immortal;
   int64_t doubleMove;
@@ -61,12 +63,31 @@ enum class CollapseGoSettlementReason {
   PRE_THRESHOLD_TWO_PASSES,
 };
 
+enum class CollapseGoLedgerAbilityState {
+  CONSUMED,
+  INACTIVE,
+};
+
+enum class CollapseGoLedgerStoneState {
+  ON_BOARD,
+  CAPTURED,
+};
+
+enum class CollapseGoLedgerSettlementState {
+  PENDING,
+  SETTLED,
+};
+
 struct CollapseGoLedgerEntry {
   int64_t specialLink;
   int64_t originActionNumber;
   Player owner;
   GameActionKind originKind;
   int sourcePoint;
+  CollapseGoLedgerAbilityState abilityState;
+  CollapseGoLedgerStoneState stoneState;
+  CollapseGoLedgerSettlementState settlementState;
+  bool tombstone;
 
   CollapseGoLedgerEntry(
     int64_t entrySpecialLink,
@@ -97,6 +118,7 @@ private:
   void append(const CollapseGoLedgerEntry& entry);
 
   friend class CollapseGoReducer;
+  friend class CollapseGoStateTestAccess;
 };
 
 struct CollapseGoPendingDouble {
@@ -134,6 +156,8 @@ struct CollapseGoScore {
 class CollapseGoState {
 public:
   explicit CollapseGoState(const CollapseGoConfig& config);
+  CollapseGoState(const CollapseGoState&) = default;
+  CollapseGoState(CollapseGoState&&) noexcept = default;
 
   const CollapseGoConfig& getConfig() const;
   const CollapseGoPosition& getPosition() const;
@@ -157,6 +181,7 @@ public:
 
   void checkConsistency() const;
   bool isEqualForTesting(const CollapseGoState& other) const;
+  CollapseGoState& operator=(CollapseGoState other);
 
 private:
   CollapseGoConfig config;
@@ -183,7 +208,10 @@ private:
   PositionalSuperkoHistory positionalSuperkoHistory;
   CollapseGoScore score;
 
+  void swap(CollapseGoState& other) noexcept;
+
   friend class CollapseGoReducer;
+  friend class CollapseGoStateTestAccess;
 };
 
 #endif // GAME_COLLAPSEGOSTATE_H_

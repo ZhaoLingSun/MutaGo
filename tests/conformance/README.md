@@ -1,6 +1,6 @@
 # 一致性测试
 
-本目录用于 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录现有一个仅覆盖 `NORMAL` / `PASS`、空账本 settlement 与普通计分路径的独立 Python 慢速参考切片，并加入明确标为 **UNFROZEN v0、仅测试排练** 的独立 C++ JSONL probe 与 Python 差分驱动。它们仍不是完整特殊能力 oracle、生产协议、冻结语义投影、百万动作夹具、门槛报告或 CI 配置。
+本目录用于 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录保留明确标为 **UNFROZEN v0、仅测试排练** 的 NORMAL/PASS C++ JSONL probe 与 Python 差分驱动，并新增与旧模式严格分离的 **UNFROZEN Double Increment 1、仅测试** 载体。二者都不是生产协议、百万动作夹具、门槛报告或 CI 配置。
 
 ## 文档状态
 
@@ -18,23 +18,29 @@
 - C++ 与 Python 的任何有意义差异都必须使测试失败并进入调查；C++ 的生产权威地位不允许静默忽略差异，Python 的参考地位也不允许自动裁决差异。
 - 两侧不得共享 Collapse Go 状态转移实现、由同一核心生成预期，或使用会删除规则意义差异的归一化。
 
-## 当前 Python NORMAL/PASS 参考切片
+## 当前 Python NORMAL/PASS/Double Increment 1 参考切片
 
 `../../python/mutago/collapse_go/normal_pass_oracle.py` 是独立、仅使用 Python 标准库的慢速参考切片。当前范围包括：
 
 - Action V1 关闭式 envelope 的严格解码，以及 9×9、13×13、19×19 居中 footprint；
-- 每方各能力 0 或 1 的可配置配额；
+- 底层 `OracleConfig` / `PlayerQuotas` 接受满足状态一致性与配额守恒的非负 JSON-safe 整数；外部测试载体刻意更窄：legacy v0 只暴露 `quotaMode=ZERO/ONE`，Double Increment 1 的 `initialQuotas` 每个分量只允许 `0..4`；
 - `NORMAL` 的全盘 N4 棋块/气重建、同时提走全部对方零气棋块、自杀与 occupancy-only PSK；
 - `PASS` 的 PSK 拒绝豁免、重复稳定占据追加、阈值或阈值前双停着触发的空账本 settlement；
+- `DOUBLE_START` 的独立 N4 起手事务、同方 `NORMAL` / `PASS` 续着、pending linkage、来源身份、逐玩家配额、append-only tombstone 账本、被提 Double source、全局 newest-to-oldest no-op settlement pop，以及 revision/log/PSK/terminal 计数公式；
 - settlement 后两次新停着、当前稳定盘面的中国式面积计分、7.5 贴目和终局事件的重复 PSK 追加；
-- 冻结的适用拒绝优先级，包括 `POINT_OFF_BOARD` 先于终局、阶段和行动者检查；零配额特殊动作的 `QUOTA_EXHAUSTED`，以及普通阶段特殊动作的 `INVALID_PHASE`。
+- 冻结的适用拒绝优先级，包括 `POINT_OFF_BOARD` 先于终局、阶段和行动者检查；零配额特殊动作的 `QUOTA_EXHAUSTED`，pending Double 禁止的续着种类，以及普通阶段特殊动作的 `INVALID_PHASE`。
 
-该切片不复用 `python/katago/game`、`tools/contract` 的规则决定辅助函数或 C++。非零配额且通过前置检查的潜在合法特殊动作会显式抛出 `UnsupportedSliceAction`，而不会伪造语义拒绝。Immortal、Double、Eightway 的实际能力语义、非空特殊事件账本与 Double continuation 仍未实现。oracle 包自身保持无 subprocess、无 JSONL transport、无 C++ 依赖；下节的外部测试驱动单独负责启动 probe。
+该切片不复用 `python/katago/game`、`tools/contract` 的规则决定辅助函数或 C++。Immortal 与 Eightway 的机械能力仍未实现：非零配额且通过前置检查的潜在合法请求会显式抛出 `UnsupportedSliceAction`，不会伪造语义拒绝。oracle 包自身保持无 subprocess、无 JSONL transport、无 C++ 依赖；外部测试驱动单独负责启动 probe。
 
 从仓库根目录运行当前切片测试：
 
 ```bash
-PYTHONPATH=python python3 -m unittest -v tests/conformance/test_python_normal_pass_oracle.py
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' \
+PYTHONPATH=python python3 -m unittest -v \
+  tests/conformance/test_python_normal_pass_oracle.py \
+  tests/conformance/test_python_double_move_oracle.py \
+  tests/conformance/test_python_double_integer_bounds.py \
+  tests/conformance/test_python_exact_state_parity.py
 ```
 
 这些测试证明的是上述受限切片的本地行为，不表示完整 Python oracle、完整 C++ reducer、一致性驱动、`GATE-RULE-1M` 或 `GATE-PROD` 已完成或通过。
@@ -48,9 +54,9 @@ PYTHONPATH=python python3 -m unittest -v tests/conformance/test_python_normal_pa
 - `boardSize` 仅允许 `9`、`13`、`19`，`quotaMode` 仅允许 `ZERO` 或 `ONE`。`episodeId` 是 1–128 字符的 ASCII 测试标识符；每个 episode 最多 160 步，canonical 请求与原始输入行均不得超过 1 MiB，canonical 响应行不得超过 16 MiB；
 - probe 使用现有 `RulesetIdentity::parseRestrictedJson`、`GameAction::ofJson` 和受限 profile canonicalizer，并以预分配的有界 reader 读取每一行；Windows 上显式把 stdin/stdout 切换为二进制模式。结构错误、未知字段、错误版本、重复键、非规范 Action V1、超长行、缺少最终换行或资源上限错误均使当前完整 frame fail closed；不输出部分 episode，诊断仅写 stderr；
 - 每步响应精确包含接受、拒绝或 `UNSUPPORTED` 状态、错误码、按颜色拆分的 board-local 捕获点、settlement 原因、终局计分事件标志、黑白占据、actor、phase、`A`、连续停着、剩余配额、完整有序 occupancy-only PSK 历史及半目整数计分投影；
-- Python 驱动强制并核验 oracle 模块来自当前 checkout 的 `python/`，先构造完整有界语料，再用独立 writer 与有界 reader 线程启动外部 probe；stdout 总量限制为 64 MiB，stderr 限制为 1 MiB，超限或 deadline 到达即终止子进程。独立 oracle 包本身仍不调用 subprocess；驱动校验响应行数、16 MiB 单行上限、canonical JSON、所有关闭式嵌套类型/枚举、逐字段值和逐列表顺序，并在首个差异停止比较；
+- Python 驱动强制并核验 oracle 模块来自当前 checkout 的 `python/`，先构造完整有界语料，再用独立 writer 与有界 reader 线程启动外部 probe；stdout 总量限制为 64 MiB，stderr 限制为 1 MiB。支持的平台上 probe 在独立 session/process group 中运行；超限或 deadline 到达时终止并强制结束整个组，关闭本地管道，所有线程 join 都受 deadline 约束，因此直接子进程退出但继承管道的孙进程不能造成无界等待。Windows 路径仍以关闭管道和有界 join fail closed。独立 oracle 包本身仍不调用 subprocess；驱动校验响应行数、16 MiB 单行上限、canonical JSON、所有关闭式嵌套类型/枚举、逐字段值和逐列表顺序，并在首个差异停止比较；
 - 随机语料只使用零配额，随机源是版本化的 SHA-256 counter 字节流。随机固定结构覆盖 9/13/19、全部 1445 个 Action V1 ID、当前行动者 `NORMAL` / `PASS`、错误行动者、footprint 外 ID、已占点、settlement 后和终局后候选；全 ID episode 按 160 步边界拆帧。额外人工 episode 保证三个棋盘都恰在 `A=T` 比较 threshold settlement；`ONE` 配额仅用于人工用例中的前置拒绝与明确 `UNSUPPORTED`；
-- CLI 的必需 `--probe`、`--seed`、`--candidate-count` 分别控制显式可执行文件路径、确定性种子与零配额随机候选数；当前随机语料边界把候选数限制为 1478–10000。失败诊断携带 seed、生成器版本、候选数、canonical 请求和截至首个差异的动作前缀；成功时只打印一行确定性 canonical JSON 摘要和 transcript SHA-256；
+- CLI 的必需 `--probe`、`--seed`、`--candidate-count` 分别控制显式可执行文件路径、确定性种子与零配额随机候选数；当前随机语料边界把候选数限制为 1478–10000。失败诊断携带 seed、生成器版本、候选数、canonical 请求和截至首个差异的动作前缀；成功时只打印一行确定性 canonical JSON 摘要和 transcript SHA-256。集成回归另外固定 `opt-in-integration` / `1600` 的完整 legacy 摘要与历史 digest `297e38b15aae76e507d71e7bda1fb38b0d320ed102fd6f99644c6ed758051cf1`，并以一个原本会提子的合法 `DOUBLE_START` 证明 v0 adapter 返回 `UNSUPPORTED` 且丢弃试探占位、提子和配额变化；
 
 从仓库根目录构建和运行：
 
@@ -78,6 +84,48 @@ PYTHONPATH=python python3 -m unittest -v \
 ```
 
 该载体只是当前受限切片的排练。其 frame 字段与摘要格式保持 **UNFROZEN**，不得称为 `semantic-projection-v1`、生产协议、完整 C++ reducer、完整 Python oracle、完整特殊能力差分、`GATE-RULE-1M` 或 `GATE-PROD` 证据。`10000` 只是本排练的随机候选数，不是百万动作门槛，也不能与未来影响语义的修改前后计数合并。
+
+## Double Increment 1 一致性载体：UNFROZEN，仅测试
+
+`collapsereducerprobe.cpp` 在不改变旧 `normal-pass-diff-v0-unfrozen` 请求/响应的前提下，另行接受 `double-move-diff-v1-unfrozen`。新模式仍复用同一个 `EXCLUDE_FROM_ALL` 测试目标 `mutago-collapse-slice-probe`，不是新增生产入口，也不需要新的 CMake target。
+
+新模式的关闭式 episode 字段为 `protocolVersion`、`episodeId`、`boardSize`、`initialQuotas`、`steps`；每步仍恰含 `candidateActor` 与冻结 Action V1 envelope。它明确限制：每帧请求最多 1 MiB、每帧响应最多 32 MiB、每 episode 最多 160 步、测试配额分量为 `0..4`、子进程 stdout 总量最多 256 MiB、stderr 最多 1 MiB、完整 corpus deadline 为 180 秒。`run_differential` 入口只创建一个绝对 monotonic deadline，并把该原始绝对时间点直接传入 probe supervisor，不根据 handoff 时的 remaining duration 重新起算；同一 deadline 贯穿受限夹具加载/Schema 与不变量验证、语料生成、Python oracle、probe pre-launch/supervision/termination/管道关闭/wait/join、响应解析、精确比较、D4，以及确定性动作重执行和不可变前缀检查；任何阶段耗尽预算都 fail closed。Python 驱动继续强制 oracle 与合同工具从当前 checkout 导入，并使用版本化 SHA-256 counter seed；首个逐值差异以及 invalid-UTF-8 stdout、malformed/non-newline/响应行数错误都报告 manifest、response index、canonical request 与已知完整动作前缀。Double digest manifest 使用 `randomCandidateCount` 表示请求的纯随机候选数；成功摘要中的 `candidateCount` 才表示 curated 与 random 的总和。当前默认 `mutago-double-increment-1` / `512` 回归固定 digest 为 `644a4401cbc3adb7a09b787b84fb3ce54d60f6f63c8692a4e04192ab592eed15`。
+
+每步比较的规范化测试投影包括：
+
+- 接受、拒绝或显式 `UNSUPPORTED`，稳定错误码、candidate actor、Action V1、捕获和 PSK append 数；
+- actor、phase、`A`、PASS 连计、pending Double、revision、log position、settled-ledger 与 stable-terminal 计数；
+- 双方 initial/remaining/used/expired 完整配额；
+- source-aware stones、N4 groups/liberties、append-only Double ledger 的 identity/lifecycle/tombstone/captured/settled 状态；
+- 完整有序 occupancy-only PSK，包括 PASS、settlement tombstone/no-op 与 terminal 产生的重复；
+- settlement 原因、handoff actor、全局 newest-to-oldest pop、每步 no-op/removal trace 与连续 PSK index；
+- 当前 terminal state 与计分事件。
+
+`double_move_differential.py` 以 checkout-pinned `tools.contract.contract.parse_json_bytes` 严格读取 `../contracts/examples/conformance-fixture-double-settlement-v1.example.json`；重复键及转义别名、浮点/非有限常量、unsafe integer、非 ASCII/孤立 surrogate 字符串或键、非法 UTF-8 均在进入夹具验证前拒绝。现有合同工具随后验证完整 Schema、语义不变量与 debug groups；外部驱动再逐字绑定 checked-in `derived.legalActionRanges`，防止合法范围被缩窄或漂移。合同 helper 只负责语法、Schema 与合同不变量，不参与 Python oracle 的玩法决定。两种实现只把 Increment 1 实际可执行字段归一化并逐项精确比较；夹具 envelope 不进入 reducer，也不被当作生产格式。额外语料覆盖 9/13/19 的八种 D4、source/action/capture/PASS/settlement/terminal 变换及 inverse round-trip、pending/settlement 边界的确定性动作重执行与不可变精确前缀、错误 actor、禁止续着种类、阈值边界、配额耗尽、占用、自杀、PSK、被提 Double source、多账本项、PASS continuation、阈值和双 PASS settlement。这里的“重执行/前缀”不是 JSON 权威事件日志重放、serialized checkpoint recovery、生产持久化恢复或公共 undo/redo 证据。
+
+从仓库根目录运行：
+
+```bash
+cmake -S cpp -B build/collapse-increment1 -DUSE_BACKEND= -DUSE_AVX2=1
+cmake --build build/collapse-increment1 \
+  --target mutago-collapse-slice-probe --config RelWithDebInfo -j4
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' \
+PYTHONPATH=python python3 -m unittest -v \
+  tests/conformance/test_double_move_differential.py
+
+MUTAGO_COLLAPSE_SLICE_PROBE="$PWD/build/collapse-increment1/mutago-collapse-slice-probe" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' \
+PYTHONPATH=python python3 -m unittest -v \
+  tests/conformance/test_double_move_differential.py
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS='error::ResourceWarning' \
+PYTHONPATH=python python3 tests/conformance/double_move_differential.py \
+  --probe build/collapse-increment1/mutago-collapse-slice-probe \
+  --seed mutago-double-increment-1 --candidate-count 512
+```
+
+该载体只覆盖 NORMAL/PASS/DOUBLE_START 的 Increment 1。Immortal/Eightway 机械语义仍显式 unsupported；夹具的 `derived.legalActionRanges` 只作为 checked-in 合同字面量被绑定和防漂移，不构成运行时完整 1,445 位 legal mask 等价证明。完整 mask 是 Increment 4 工作。随机候选数和摘要格式均为 **UNFROZEN**。不得据此声明完整 reducer/oracle、生产协议、JSON 事件日志重放、checkpoint/持久化恢复、公共 undo/redo、`semantic-projection-v1` runtime、`GATE-RULE-1M` 或 `GATE-PROD` 已通过。
 
 ## 必测冻结契约
 
@@ -151,4 +199,6 @@ M0 `conformance-fixture-v1`、`semantic-projection-v1` 和 `mismatch-bundle-v1` 
 
 ## English Summary
 
-Conformance tests compare the sole C++ production authority with an independently implemented slow Python oracle. The directory contains a standard-library-only Python reference slice for strict Action V1 decoding, NORMAL/PASS play, full-scan N4 capture and suicide, ordered occupancy-only PSK, empty-ledger settlement, and exact ordinary-play Chinese area scoring. It also contains an explicitly test-only, **UNFROZEN v0** rehearsal: the `mutago-collapse-slice-probe` target is excluded from the default build and exchanges complete-episode canonical JSONL frames with an external Python driver under protocol literal `normal-pass-diff-v0-unfrozen`. The probe reuses the existing restricted JSON and Action V1 parsers, fails closed without a partial frame on malformed input, keeps diagnostics on stderr, and uses binary stdin/stdout on Windows. The driver forces and verifies that oracle modules come from this checkout, uses a versioned SHA-256 counter stream, covers all 1,445 action IDs plus structured legal and illegal candidates and explicit `A=T` settlement on centered 9×9, 13×13, and 19×19 zero-quota states, validates every closed nested response shape, compares every projected field and ordered PSK entry exactly, and stops at the first comparison mismatch with reproducible manifest, request, and action-prefix context. Requests are bounded to 160 steps and 1 MiB; canonical response lines are bounded to 16 MiB; aggregate subprocess stdout and stderr are bounded to 64 MiB and 1 MiB respectively and are consumed by bounded reader threads under a corpus deadline. Subprocess use is confined to this external harness; the independent oracle package remains subprocess-free. Nonzero potentially legal specials remain explicit `UnsupportedSliceAction` / `UNSUPPORTED`, while special-ability mechanics, nonempty ledgers, Double continuation, per-special settlement pops, and unstable settlement reconstruction states are not implemented or claimed as covered. The frozen identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Current coverage enforces the closed `schemaVersion`/`actionId`/`kind` Action V1 envelope, the 1,445-way kind-major codec, initial empty occupancy as PSK entry zero, stable NORMAL/PASS and scored-terminal appends, and no synthetic PSK append for empty-ledger settlement. The MVP has no dead-stone negotiation. Future complete tests must arbitrate termination-first versus action-first ordering: immediate administrative termination is valid only at exposed stable boundaries before an action commits, while a committed action’s triggered settlement completes atomically and exposes no internal command boundary. Operational timeouts and cancellation never synthesize game `TIMEOUT`. The early gate compares at least one million reproducible legal and structured-illegal candidate atomic actions with zero reproducible semantic differences before search, product, or training-data production depends on the rules. This rehearsal is not `semantic-projection-v1`, a production protocol, a full reducer or oracle, or evidence for `GATE-RULE-1M` or `GATE-PROD`; a 10,000-candidate run is not the million-action gate.
+Conformance tests compare the sole C++ production authority with an independently implemented slow Python oracle. The directory contains a standard-library-only Python reference slice for strict Action V1 decoding, NORMAL/PASS play, full-scan N4 capture and suicide, ordered occupancy-only PSK, empty-ledger settlement, and exact ordinary-play Chinese area scoring. The underlying oracle accepts nonnegative JSON-safe quota integers subject to state consistency and conservation. The external carriers are intentionally narrower: legacy v0 exposes only `quotaMode=ZERO/ONE`, while Double Increment 1 allows each `initialQuotas` component in `0..4`. It also contains an explicitly test-only, **UNFROZEN v0** rehearsal: the `mutago-collapse-slice-probe` target is excluded from the default build and exchanges complete-episode canonical JSONL frames with an external Python driver under protocol literal `normal-pass-diff-v0-unfrozen`. The probe reuses the existing restricted JSON and Action V1 parsers, fails closed without a partial frame on malformed input, keeps diagnostics on stderr, and uses binary stdin/stdout on Windows. The driver forces and verifies that oracle modules come from this checkout, uses a versioned SHA-256 counter stream, covers all 1,445 action IDs plus structured legal and illegal candidates and explicit `A=T` settlement on centered 9×9, 13×13, and 19×19 zero-quota states, validates every closed nested response shape, compares every projected field and ordered PSK entry exactly, and stops at the first comparison mismatch with reproducible manifest, request, and action-prefix context. Requests are bounded to 160 steps and 1 MiB; canonical response lines are bounded to 16 MiB; aggregate subprocess stdout and stderr are bounded to 64 MiB and 1 MiB respectively. Where supported, the probe runs in a new session/process group; timeout or overflow terminates and kills the group, closes local pipes, and joins reader/writer threads only within the deadline, including when an exited child leaves a grandchild holding inherited pipes. Windows remains fail-closed with bounded local pipe closure and joins. Subprocess use is confined to this external harness; the independent oracle package remains subprocess-free. In the legacy v0 carrier, nonzero potentially legal special actions deliberately remain explicit `UnsupportedSliceAction` / `UNSUPPORTED`, preserving that protocol's original scope even though the underlying Increment 1 implementations now support Double. A fixed `opt-in-integration` / 1,600-random-candidate regression pins the complete historical summary and digest `297e38b15aae76e507d71e7bda1fb38b0d320ed102fd6f99644c6ed758051cf1`; a legal capturing `DOUBLE_START` separately proves that the legacy adapter reports `UNSUPPORTED` and discards tentative occupancy, captures, and quota changes. The frozen identity is `mutago.collapse-go` / `0.1.0-draft` / descriptor SHA-256 `a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899`. Current coverage enforces the closed `schemaVersion`/`actionId`/`kind` Action V1 envelope, the 1,445-way kind-major codec, initial empty occupancy as PSK entry zero, stable NORMAL/PASS and scored-terminal appends, and no synthetic PSK append for empty-ledger settlement. The MVP has no dead-stone negotiation. Future complete tests must arbitrate termination-first versus action-first ordering: immediate administrative termination is valid only at exposed stable boundaries before an action commits, while a committed action’s triggered settlement completes atomically and exposes no internal command boundary. Operational timeouts and cancellation never synthesize game `TIMEOUT`. The early gate compares at least one million reproducible legal and structured-illegal candidate atomic actions with zero reproducible semantic differences before search, product, or training-data production depends on the rules. This rehearsal is not `semantic-projection-v1`, a production protocol, a full reducer or oracle, or evidence for `GATE-RULE-1M` or `GATE-PROD`; a 10,000-candidate run is not the million-action gate.
+
+A separate test-only protocol literal, `double-move-diff-v1-unfrozen`, provides the bounded Double Increment 1 carrier without changing the old v0 shape or labels. It projects exact source-aware stones and N4 groups, actor/phase/action/pass state, pending Double linkage, all quota buckets, append-only ledger identity and lifecycle, revision/log/settled/terminal counters, captures, ordered occupancy-only PSK, no-op settlement traces, and terminal state. The checked-in Double settlement fixture is parsed with the checkout-pinned restricted-profile parser, which rejects duplicate and escaped-alias keys, floats/non-finite constants, unsafe integers, non-ASCII/surrogate strings or keys, and malformed UTF-8. The existing contract checker then validates full Schema invariants and debug groups, while the external driver binds every checked-in `derived.legalActionRanges` literal exactly; this is drift evidence, not runtime full-mask equivalence. Both implementations independently execute the fixture's three actions and match the normalized Increment 1 projection exactly. Curated tests add captured sources, multiple ledger entries, forbidden continuations, threshold boundaries, quota exhaustion, occupied/suicide/PSK failures, PASS continuation, both settlement reasons, terminal scoring, deterministic action re-execution with exact immutable pending/settlement prefixes, and all eight D4 transforms plus inverse round-trips on 9×9, 13×13, and 19×19. Requests are bounded to 1 MiB and 160 steps, response lines to 32 MiB, Double test quota components to `0..4`, aggregate stdout/stderr to 256 MiB/1 MiB, and the corpus to one absolute 180-second monotonic deadline. The original absolute timestamp is passed directly into child pre-launch checks, supervision, termination, pipe closure, waits, and joins; no fresh deadline is created from a handoff-time remaining duration. The same deadline also spans fixture load/validation, generation, Python execution, parsing/comparison, D4, and deterministic re-execution/prefix checks. Invalid-UTF-8 stdout, malformed JSON, non-newline output, and response-count failures include the manifest, response index, canonical request, and known full action prefix rather than falling back to invocation-only diagnostics. The Double digest manifest calls the requested random-only quantity `randomCandidateCount`; only the success summary uses total `candidateCount` alongside curated/random counts. The current default `mutago-double-increment-1` / 512 regression pins digest `644a4401cbc3adb7a09b787b84fb3ce54d60f6f63c8692a4e04192ab592eed15`. Immortal and Eightway mechanics remain unsupported, so full runtime 1,445-bit legal-mask equivalence is intentionally not claimed; that is later Increment 4 work. The re-execution evidence is not JSON event-log replay, serialized checkpoint recovery, production persistence, or public undo/redo. This carrier is not a fixture envelope consumer in production, a frozen runtime protocol, or a claim that `GATE-RULE-1M` passed.

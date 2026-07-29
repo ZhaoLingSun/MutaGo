@@ -675,11 +675,10 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
         )
         self.assertIs(state_with_prior_repeat, transition.state)
 
-    def test_nonzero_potentially_legal_specials_are_explicitly_unsupported(self) -> None:
+    def test_nonzero_potentially_legal_remaining_specials_are_unsupported(self) -> None:
         state = new_game(OracleConfig(board_size=9))
         for kind, x in (
             (ActionKind.IMMORTAL, 0),
-            (ActionKind.DOUBLE_START, 1),
             (ActionKind.EIGHTWAY, 2),
         ):
             with self.subTest(kind=kind):

@@ -6,6 +6,41 @@
 
 using namespace std;
 
+class CollapseGoStateTestAccess {
+public:
+  static CollapseGoLedgerEntry& ledgerEntry(CollapseGoState& state, size_t index) {
+    return state.ledger.entries.at(index);
+  }
+
+  static void clearPendingDouble(CollapseGoState& state) {
+    state.pendingDouble.reset();
+  }
+
+  static void setPendingDouble(
+    CollapseGoState& state,
+    Player owner,
+    int64_t specialLink,
+    int64_t originActionNumber
+  ) {
+    state.pendingDouble = CollapseGoPendingDouble(owner,specialLink,originActionNumber);
+  }
+
+  static void replacePskOccupancy(
+    CollapseGoState& state,
+    size_t index,
+    const vector<uint8_t>& occupancy
+  ) {
+    const PositionalSuperkoHistory& history = state.positionalSuperkoHistory;
+    if(index >= history.size())
+      throw StringError("Collapse Go test PSK replacement index is out of range");
+    PositionalSuperkoKey replacementKey(state.position.getBoardSize(),occupancy);
+    PositionalSuperkoHistory replacement(index == 0 ? replacementKey : history.at(0));
+    for(size_t historyIndex = 1; historyIndex < history.size(); historyIndex++)
+      replacement.append(historyIndex == index ? replacementKey : history.at(historyIndex));
+    state.positionalSuperkoHistory = replacement;
+  }
+};
+
 namespace {
 
 GameAction normalAction(int boardSize, int x, int y) {
@@ -33,6 +68,14 @@ CollapseGoApplyResult playNormal(CollapseGoState& state, int x, int y) {
 
 CollapseGoApplyResult playPass(CollapseGoState& state) {
   return applyAccepted(state,state.getActor(),GameAction::pass());
+}
+
+CollapseGoApplyResult playDoubleStart(CollapseGoState& state, int x, int y) {
+  return applyAccepted(
+    state,
+    state.getActor(),
+    specialAction(GameActionKind::DOUBLE_START,state.getConfig().getBoardSize(),x,y)
+  );
 }
 
 void expectRejectedAtomically(
@@ -148,6 +191,107 @@ void Tests::runCollapseReducerTests() {
     expectStringError([&]() { dimensionCheckedHistory.append(board13); });
   }
 
+  // Restored or fabricated shells must retain exact PSK seeding, Double timing, history evidence, and pending control.
+  {
+    CollapseGoState invalidInitialPsk(CollapseGoConfig::allZero(9));
+    playNormal(invalidInitialPsk,4,4);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      invalidInitialPsk,
+      0,
+      invalidInitialPsk.getPositionalSuperkoHistory().at(1).getOccupancy()
+    );
+    expectStringError([&]() { invalidInitialPsk.checkConsistency(); });
+
+    CollapseGoState missingPending(CollapseGoConfig::allOne(9));
+    playDoubleStart(missingPending,4,4);
+    CollapseGoStateTestAccess::clearPendingDouble(missingPending);
+    expectStringError([&]() { missingPending.checkConsistency(); });
+
+    CollapseGoState mismatchedPending(CollapseGoConfig::allOne(9));
+    playDoubleStart(mismatchedPending,4,4);
+    CollapseGoStateTestAccess::setPendingDouble(mismatchedPending,P_BLACK,2,1);
+    expectStringError([&]() { mismatchedPending.checkConsistency(); });
+
+    CollapseGoState capturedPendingSource(CollapseGoConfig::allOne(9));
+    playDoubleStart(capturedPendingSource,4,4);
+    CollapseGoStateTestAccess::ledgerEntry(capturedPendingSource,0).stoneState =
+      CollapseGoLedgerStoneState::CAPTURED;
+    expectStringError([&]() { capturedPendingSource.checkConsistency(); });
+
+    CollapseGoState spuriousPending(CollapseGoConfig::allOne(9));
+    playDoubleStart(spuriousPending,4,4);
+    playPass(spuriousPending);
+    CollapseGoStateTestAccess::setPendingDouble(spuriousPending,P_WHITE,1,2);
+    expectStringError([&]() { spuriousPending.checkConsistency(); });
+
+    auto makeCapturedDoubleState = []() {
+      CollapseGoState state(CollapseGoConfig::allOne(9));
+      playDoubleStart(state,1,1);
+      playNormal(state,8,8);
+      playNormal(state,1,0); playNormal(state,8,7);
+      playNormal(state,0,1); playNormal(state,7,8);
+      playNormal(state,2,1); playNormal(state,7,7);
+      playNormal(state,1,2);
+      testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+      state.checkConsistency();
+      return state;
+    };
+
+    CollapseGoState missingStartHistory = makeCapturedDoubleState();
+    playPass(missingStartHistory);
+    playPass(missingStartHistory);
+    vector<uint8_t> alteredStartOccupancy =
+      missingStartHistory.getPositionalSuperkoHistory().at(1).getOccupancy();
+    alteredStartOccupancy[static_cast<size_t>(1 + 1 * 9)] = static_cast<uint8_t>(C_EMPTY);
+    CollapseGoStateTestAccess::replacePskOccupancy(missingStartHistory,1,alteredStartOccupancy);
+    expectStringError([&]() { missingStartHistory.checkConsistency(); });
+
+    CollapseGoState forgedSourcePoint(CollapseGoConfig::allOne(9));
+    playNormal(forgedSourcePoint,4,4); playNormal(forgedSourcePoint,8,8);
+    playDoubleStart(forgedSourcePoint,1,1);
+    playNormal(forgedSourcePoint,7,8);
+    playNormal(forgedSourcePoint,1,0); playNormal(forgedSourcePoint,7,7);
+    playNormal(forgedSourcePoint,0,1); playNormal(forgedSourcePoint,6,8);
+    playNormal(forgedSourcePoint,2,1); playNormal(forgedSourcePoint,6,7);
+    playNormal(forgedSourcePoint,1,2);
+    testAssert(forgedSourcePoint.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    playPass(forgedSourcePoint);
+    playPass(forgedSourcePoint);
+    CollapseGoStateTestAccess::ledgerEntry(forgedSourcePoint,0).sourcePoint = 4 + 4 * 9;
+    expectStringError([&]() { forgedSourcePoint.checkConsistency(); });
+
+    CollapseGoState invalidThresholdOrigin = makeCapturedDoubleState();
+    for(int i = 0; i < 12; i++) {
+      playPass(invalidThresholdOrigin);
+      playNormal(invalidThresholdOrigin,i % 6,4 + i / 6);
+    }
+    testAssert(invalidThresholdOrigin.getAtomicActionCount() == 33);
+    CollapseGoApplyResult threshold = playNormal(invalidThresholdOrigin,4,8);
+    testAssert(threshold.settlementTriggered);
+    testAssert(invalidThresholdOrigin.getAtomicActionCount() == 34);
+    CollapseGoLedgerEntry& thresholdEntry = CollapseGoStateTestAccess::ledgerEntry(invalidThresholdOrigin,0);
+    thresholdEntry.originActionNumber = 34;
+    thresholdEntry.specialLink = 34;
+    expectStringError([&]() { invalidThresholdOrigin.checkConsistency(); });
+
+    CollapseGoState adjacentOrigins(CollapseGoConfig::allOne(9));
+    playDoubleStart(adjacentOrigins,8,8);
+    playNormal(adjacentOrigins,7,8);
+    playDoubleStart(adjacentOrigins,1,1);
+    playNormal(adjacentOrigins,8,7);
+    playNormal(adjacentOrigins,1,0); playNormal(adjacentOrigins,7,7);
+    playNormal(adjacentOrigins,0,1); playNormal(adjacentOrigins,6,7);
+    playNormal(adjacentOrigins,2,1); playNormal(adjacentOrigins,6,6);
+    playNormal(adjacentOrigins,1,2);
+    testAssert(adjacentOrigins.getLedger().at(1).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    playPass(adjacentOrigins);
+    playPass(adjacentOrigins);
+    CollapseGoLedgerEntry& adjacentEntry = CollapseGoStateTestAccess::ledgerEntry(adjacentOrigins,1);
+    adjacentEntry.originActionNumber = 2;
+    adjacentEntry.specialLink = 2;
+    expectStringError([&]() { adjacentOrigins.checkConsistency(); });
+  }
+
   // PASS permits repeated occupancy, preserves duplicates, and two pre-threshold passes settle an empty ledger.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
@@ -249,7 +393,7 @@ void Tests::runCollapseReducerTests() {
     }
   }
 
-  // Threshold trigger precedence wins when action T is also the second PASS, and Double starts require A+2<=T.
+  // Threshold trigger precedence wins when action T is also the second PASS, and Double spans T-1/T atomically.
   {
     CollapseGoState passAtThreshold(CollapseGoConfig::allZero(9));
     for(int i = 0; i < 16; i++) {
@@ -269,16 +413,391 @@ void Tests::runCollapseReducerTests() {
       playNormal(doubleBoundary,i % 9,i / 9);
     }
     testAssert(doubleBoundary.getAtomicActionCount() == 32);
-    expectRejectedAtomically(
-      doubleBoundary,P_BLACK,specialAction(GameActionKind::DOUBLE_START,9,8,8),
-      CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
-    );
-    playNormal(doubleBoundary,8,8);
+    CollapseGoApplyResult doubleStart = playDoubleStart(doubleBoundary,8,8);
+    testAssert(!doubleStart.settlementTriggered);
     testAssert(doubleBoundary.getAtomicActionCount() == 33);
+    testAssert(doubleBoundary.getActor() == P_BLACK);
+    testAssert(doubleBoundary.getPendingDouble().has_value());
+    testAssert(doubleBoundary.getPendingDouble()->originActionNumber == 33);
+    testAssert(doubleBoundary.getPendingDouble()->specialLink == 33);
     expectRejectedAtomically(
-      doubleBoundary,P_WHITE,specialAction(GameActionKind::DOUBLE_START,9,8,7),
+      doubleBoundary,P_BLACK,specialAction(GameActionKind::DOUBLE_START,9,8,7),
+      CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN,true
+    );
+
+    CollapseGoApplyResult continuation = playNormal(doubleBoundary,8,7);
+    testAssert(continuation.settlementTriggered);
+    testAssert(continuation.settlementReason == CollapseGoSettlementReason::THRESHOLD);
+    testAssert(continuation.positionalSuperkoAppends == 2);
+    testAssert(continuation.settlementSteps.size() == 1);
+    testAssert(continuation.settlementSteps[0].originActionNumber == 33);
+    testAssert(continuation.settlementSteps[0].noOp);
+    testAssert(!continuation.settlementSteps[0].abilityDeactivated);
+    testAssert(doubleBoundary.getAtomicActionCount() == 34);
+    testAssert(doubleBoundary.getRevision() == 34);
+    testAssert(doubleBoundary.getLogPosition() == 35);
+    testAssert(doubleBoundary.getSettledLedgerCount() == 1);
+    testAssert(doubleBoundary.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(doubleBoundary.getActor() == P_WHITE);
+    testAssert(!doubleBoundary.getPendingDouble().has_value());
+    testAssert(doubleBoundary.getPositionalSuperkoHistory().size() == 36);
+    const CollapseGoStoneSource& continuationSource = doubleBoundary.getPosition().getCell(8,7).getSource();
+    testAssert(continuationSource.originActionNumber == 34);
+    testAssert(continuationSource.originKind == GameActionKind::NORMAL);
+    testAssert(!continuationSource.specialLink.has_value());
+
+    CollapseGoState doublePassBoundary(CollapseGoConfig::allOne(9));
+    for(int i = 0; i < 16; i++) {
+      playPass(doublePassBoundary);
+      playNormal(doublePassBoundary,i % 9,i / 9);
+    }
+    testAssert(doublePassBoundary.getAtomicActionCount() == 32);
+    playDoubleStart(doublePassBoundary,8,8);
+    CollapseGoApplyResult passContinuation = playPass(doublePassBoundary);
+    testAssert(passContinuation.settlementTriggered);
+    testAssert(passContinuation.settlementReason == CollapseGoSettlementReason::THRESHOLD);
+    testAssert(passContinuation.positionalSuperkoAppends == 2);
+    testAssert(passContinuation.settlementSteps.size() == 1);
+    testAssert(passContinuation.settlementSteps[0].originActionNumber == 33);
+    testAssert(passContinuation.settlementSteps[0].noOp);
+    testAssert(!passContinuation.settlementSteps[0].abilityDeactivated);
+    testAssert(doublePassBoundary.getAtomicActionCount() == 34);
+    testAssert(doublePassBoundary.getRevision() == 34);
+    testAssert(doublePassBoundary.getLogPosition() == 35);
+    testAssert(doublePassBoundary.getSettledLedgerCount() == 1);
+    testAssert(doublePassBoundary.getActor() == P_WHITE);
+    testAssert(doublePassBoundary.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(doublePassBoundary.getConsecutivePasses() == 0);
+    testAssert(!doublePassBoundary.getPendingDouble().has_value());
+    testAssert(doublePassBoundary.getPositionalSuperkoHistory().size() == 36);
+
+    CollapseGoState tooLate(CollapseGoConfig::allOne(9));
+    playDoubleStart(tooLate,8,8);
+    playNormal(tooLate,8,7);
+    for(int i = 0; i < 15; i++) {
+      playPass(tooLate);
+      playNormal(tooLate,i % 9,i / 9);
+    }
+    testAssert(tooLate.getAtomicActionCount() == 32);
+    playNormal(tooLate,7,7);
+    testAssert(tooLate.getAtomicActionCount() == 33);
+    testAssert(tooLate.getActor() == P_BLACK);
+    testAssert(tooLate.getRemainingQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(!tooLate.getPosition().isEmpty(8,8));
+    expectRejectedAtomically(
+      tooLate,P_BLACK,specialAction(GameActionKind::DOUBLE_START,9,8,8),
       CollapseGoApplyError::DOUBLE_THRESHOLD,true
     );
+  }
+
+  // Double start and NORMAL continuation are separate full N4 transactions with distinct source identities.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playNormal(state,1,0); playNormal(state,1,1);
+    playNormal(state,0,1); playNormal(state,8,8);
+    playNormal(state,2,1); playNormal(state,8,7);
+
+    CollapseGoApplyResult start = playDoubleStart(state,7,7);
+    testAssert(start.positionalSuperkoAppends == 1);
+    testAssert(start.capturedStones.empty());
+    testAssert(state.getAtomicActionCount() == 7);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getConsecutivePasses() == 0);
+    testAssert(state.getPendingDouble().has_value());
+    testAssert(state.getPendingDouble()->owner == P_BLACK);
+    testAssert(state.getPendingDouble()->specialLink == 7);
+    testAssert(state.getRemainingQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(state.getLedger().size() == 1);
+    const CollapseGoLedgerEntry& pendingEntry = state.getLedger().at(0);
+    testAssert(pendingEntry.specialLink == 7);
+    testAssert(pendingEntry.originActionNumber == 7);
+    testAssert(pendingEntry.owner == P_BLACK);
+    testAssert(pendingEntry.originKind == GameActionKind::DOUBLE_START);
+    testAssert(pendingEntry.sourcePoint == 7 + 7 * 9);
+    testAssert(pendingEntry.abilityState == CollapseGoLedgerAbilityState::CONSUMED);
+    testAssert(pendingEntry.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(pendingEntry.settlementState == CollapseGoLedgerSettlementState::PENDING);
+    testAssert(pendingEntry.tombstone);
+    const CollapseGoStoneSource& startSource = state.getPosition().getCell(7,7).getSource();
+    testAssert(startSource.originActionNumber == 7);
+    testAssert(startSource.originKind == GameActionKind::DOUBLE_START);
+    testAssert(startSource.specialLink.has_value() && *startSource.specialLink == 7);
+
+    CollapseGoApplyResult continuation = playNormal(state,1,2);
+    testAssert(continuation.capturedStones.size() == 1);
+    testAssert(continuation.capturedStones[0] == Location::getLoc(1,1,9));
+    testAssert(!continuation.settlementTriggered);
+    testAssert(state.getAtomicActionCount() == 8);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(!state.getPendingDouble().has_value());
+    testAssert(state.getPosition().getColor(1,1) == C_EMPTY);
+    const CollapseGoStoneSource& continuationSource = state.getPosition().getCell(1,2).getSource();
+    testAssert(continuationSource.originActionNumber == 8);
+    testAssert(continuationSource.originKind == GameActionKind::NORMAL);
+    testAssert(!continuationSource.specialLink.has_value());
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(state.getPositionalSuperkoHistory().size() == 9);
+    state.checkConsistency();
+  }
+
+  // Frozen singleton fixture: Double start, PASS continuation, opponent PASS, then one no-op settlement pop.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(19));
+    PositionalSuperkoKey empty(19,state.getPosition().getRowMajorOccupancy());
+    CollapseGoApplyResult start = playDoubleStart(state,9,9);
+    testAssert(start.positionalSuperkoAppends == 1);
+    testAssert(state.getAtomicActionCount() == 1);
+    testAssert(state.getRevision() == 1);
+    testAssert(state.getLogPosition() == 1);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getPendingDouble().has_value());
+    const CollapseGoLedgerEntry& afterStart = state.getLedger().at(0);
+    testAssert(afterStart.abilityState == CollapseGoLedgerAbilityState::CONSUMED);
+    testAssert(afterStart.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(afterStart.settlementState == CollapseGoLedgerSettlementState::PENDING);
+    testAssert(afterStart.tombstone);
+
+    expectRejectedAtomically(
+      state,P_WHITE,specialAction(GameActionKind::IMMORTAL,19,0,0),
+      CollapseGoApplyError::WRONG_ACTOR,true
+    );
+    expectRejectedAtomically(
+      state,P_BLACK,specialAction(GameActionKind::IMMORTAL,19,0,0),
+      CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN,true
+    );
+    expectRejectedAtomically(
+      state,P_BLACK,specialAction(GameActionKind::DOUBLE_START,19,9,9),
+      CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN,true
+    );
+    expectRejectedAtomically(
+      state,P_BLACK,normalAction(19,9,9),CollapseGoApplyError::POINT_OCCUPIED,true
+    );
+
+    CollapseGoApplyResult continuation = playPass(state);
+    testAssert(continuation.positionalSuperkoAppends == 1);
+    testAssert(!continuation.settlementTriggered);
+    testAssert(state.getAtomicActionCount() == 2);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getConsecutivePasses() == 1);
+    testAssert(!state.getPendingDouble().has_value());
+
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.positionalSuperkoAppends == 2);
+    testAssert(trigger.settlementSteps.size() == 1);
+    testAssert(trigger.settlementSteps[0].specialLink == 1);
+    testAssert(trigger.settlementSteps[0].originActionNumber == 1);
+    testAssert(trigger.settlementSteps[0].owner == P_BLACK);
+    testAssert(trigger.settlementSteps[0].originKind == GameActionKind::DOUBLE_START);
+    testAssert(trigger.settlementSteps[0].sourcePoint == 180);
+    testAssert(trigger.settlementSteps[0].noOp);
+    testAssert(!trigger.settlementSteps[0].abilityDeactivated);
+    testAssert(state.getAtomicActionCount() == 3);
+    testAssert(state.getRevision() == 3);
+    testAssert(state.getLogPosition() == 4);
+    testAssert(state.getSettledLedgerCount() == 1);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(state.getConsecutivePasses() == 0);
+    testAssert(!state.getPendingDouble().has_value());
+    const CollapseGoLedgerEntry& settled = state.getLedger().at(0);
+    testAssert(settled.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(settled.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(settled.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(settled.tombstone);
+    testAssert(state.getRemainingQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(state.getExpiredQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getPositionalSuperkoHistory().size() == 5);
+    testAssert(state.getPositionalSuperkoHistory().at(0) == empty);
+    for(size_t i = 2; i < 5; i++)
+      testAssert(state.getPositionalSuperkoHistory().at(i) == state.getPositionalSuperkoHistory().at(1));
+    state.checkConsistency();
+  }
+
+  // Double start resets an earlier ordinary PASS before a PASS continuation begins a fresh streak.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    CollapseGoApplyResult ordinaryPass = playPass(state);
+    testAssert(!ordinaryPass.settlementTriggered);
+    testAssert(state.getConsecutivePasses() == 1);
+    testAssert(state.getActor() == P_WHITE);
+
+    CollapseGoApplyResult start = playDoubleStart(state,4,4);
+    testAssert(!start.settlementTriggered);
+    testAssert(state.getConsecutivePasses() == 0);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getPendingDouble().has_value());
+
+    CollapseGoApplyResult continuation = playPass(state);
+    testAssert(!continuation.settlementTriggered);
+    testAssert(continuation.settlementReason == CollapseGoSettlementReason::NONE);
+    testAssert(continuation.positionalSuperkoAppends == 1);
+    testAssert(state.getAtomicActionCount() == 3);
+    testAssert(state.getConsecutivePasses() == 1);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(!state.getPendingDouble().has_value());
+    testAssert(state.getSettledLedgerCount() == 0);
+    state.checkConsistency();
+  }
+
+  // A failed NORMAL continuation preserves the complete pending obligation and all committed Double metadata.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playNormal(state,8,8); playNormal(state,1,2);
+    playNormal(state,8,7); playNormal(state,3,2);
+    playNormal(state,7,8); playNormal(state,2,1);
+    playNormal(state,7,7); playNormal(state,2,3);
+    playDoubleStart(state,0,0);
+    testAssert(state.getPendingDouble().has_value());
+    expectRejectedAtomically(
+      state,P_WHITE,GameAction::fromCanvas(GameActionKind::EIGHTWAY,0,0),
+      CollapseGoApplyError::POINT_OFF_BOARD,true
+    );
+    expectRejectedAtomically(
+      state,P_BLACK,normalAction(9,2,2),CollapseGoApplyError::SUICIDE,true
+    );
+    testAssert(state.getPendingDouble().has_value());
+    testAssert(state.getPendingDouble()->originActionNumber == 9);
+    testAssert(state.getLedger().size() == 1);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    playPass(state);
+    testAssert(!state.getPendingDouble().has_value());
+    testAssert(state.getActor() == P_WHITE);
+  }
+
+  // Capturing a Double source updates its append-only tombstone, whose later settlement step remains a no-op.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playDoubleStart(state,1,1);
+    playNormal(state,8,8);
+    playNormal(state,1,0); playNormal(state,8,7);
+    playNormal(state,0,1); playNormal(state,7,8);
+    playNormal(state,2,1); playNormal(state,7,7);
+    CollapseGoApplyResult capture = playNormal(state,1,2);
+    testAssert(capture.capturedStones.size() == 1);
+    testAssert(capture.capturedStones[0] == Location::getLoc(1,1,9));
+    testAssert(state.getPosition().getColor(1,1) == C_EMPTY);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getRemainingQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementSteps.size() == 1);
+    testAssert(trigger.settlementSteps[0].originActionNumber == 1);
+    testAssert(trigger.settlementSteps[0].noOp);
+    testAssert(!trigger.settlementSteps[0].abilityDeactivated);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getLedger().at(0).settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(state.getSettledLedgerCount() == 1);
+    state.checkConsistency();
+  }
+
+  // A later Double start may capture an older Double source; mixed tombstones still pop by global age.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playDoubleStart(state,1,1);
+    playNormal(state,8,8);
+    playNormal(state,1,0); playNormal(state,8,7);
+    playNormal(state,0,1); playNormal(state,7,8);
+    playNormal(state,2,1); playNormal(state,7,7);
+
+    CollapseGoApplyResult capturingStart = playDoubleStart(state,1,2);
+    testAssert(capturingStart.capturedStones.size() == 1);
+    testAssert(capturingStart.capturedStones[0] == Location::getLoc(1,1,9));
+    testAssert(capturingStart.positionalSuperkoAppends == 1);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getPendingDouble().has_value());
+    testAssert(state.getPendingDouble()->originActionNumber == 9);
+    testAssert(state.getLedger().size() == 2);
+    testAssert(state.getLedger().at(0).originActionNumber == 1);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getLedger().at(1).originActionNumber == 9);
+    testAssert(state.getLedger().at(1).stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    const CollapseGoStoneSource& source = state.getPosition().getCell(1,2).getSource();
+    testAssert(source.originActionNumber == 9);
+    testAssert(source.originKind == GameActionKind::DOUBLE_START);
+    testAssert(source.specialLink.has_value() && *source.specialLink == 9);
+
+    playNormal(state,6,6);
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementSteps.size() == 2);
+    testAssert(trigger.settlementSteps[0].originActionNumber == 9);
+    testAssert(trigger.settlementSteps[1].originActionNumber == 1);
+    for(const CollapseGoSettlementStep& step: trigger.settlementSteps) {
+      testAssert(step.noOp);
+      testAssert(!step.abilityDeactivated);
+    }
+    testAssert(trigger.positionalSuperkoAppends == 3);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getLedger().at(1).stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(state.getSettledLedgerCount() == 2);
+    testAssert(state.getAtomicActionCount() == 12);
+    testAssert(state.getLogPosition() == 14);
+    testAssert(state.getPositionalSuperkoHistory().size() == 15);
+    state.checkConsistency();
+  }
+
+  // Experimental quotas above one retain every Double and settle the global ledger newest-to-oldest.
+  {
+    CollapseGoConfig config(9,CollapseGoQuotas(0,2,0),CollapseGoQuotas(0,2,0));
+    CollapseGoState state(config);
+    playDoubleStart(state,0,0);
+    playNormal(state,1,0);
+    playDoubleStart(state,8,8);
+    playPass(state);
+    playNormal(state,4,4);
+    playDoubleStart(state,7,8);
+    playNormal(state,6,8);
+    playDoubleStart(state,0,1);
+    playNormal(state,1,1);
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.settlementSteps.size() == 4);
+    const int64_t expectedNewestFirst[4] = {8,6,3,1};
+    for(size_t i = 0; i < trigger.settlementSteps.size(); i++) {
+      testAssert(trigger.settlementSteps[i].originActionNumber == expectedNewestFirst[i]);
+      testAssert(trigger.settlementSteps[i].specialLink == expectedNewestFirst[i]);
+      testAssert(trigger.settlementSteps[i].noOp);
+      testAssert(!trigger.settlementSteps[i].abilityDeactivated);
+    }
+    testAssert(trigger.positionalSuperkoAppends == 5);
+    testAssert(state.getLedger().size() == 4);
+    const int64_t expectedOldestFirst[4] = {1,3,6,8};
+    for(size_t i = 0; i < state.getLedger().size(); i++) {
+      const CollapseGoLedgerEntry& entry = state.getLedger().at(i);
+      testAssert(entry.originActionNumber == expectedOldestFirst[i]);
+      testAssert(entry.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+      testAssert(entry.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+      testAssert(entry.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+      testAssert(entry.tombstone);
+    }
+    testAssert(state.getAtomicActionCount() == 11);
+    testAssert(state.getRevision() == 11);
+    testAssert(state.getSettledLedgerCount() == 4);
+    testAssert(state.getLogPosition() == 15);
+    testAssert(state.getPositionalSuperkoHistory().size() == 16);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    for(Player pla: {P_BLACK,P_WHITE}) {
+      testAssert(state.getInitialQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 2);
+      testAssert(state.getRemainingQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 0);
+      testAssert(state.getUsedQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 2);
+      testAssert(state.getExpiredQuota(pla,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    }
+    for(size_t i = 12; i < 16; i++)
+      testAssert(state.getPositionalSuperkoHistory().at(i) == state.getPositionalSuperkoHistory().at(11));
+    state.checkConsistency();
   }
 
   // A NORMAL action captures multiple independent N4 groups in one committed transition.
@@ -327,7 +846,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // A nonzero-quota Double source placement reports decidable N4 suicide before slice unsupportedness.
+  // A Double start runs the exact N4 transaction and rejects suicide before any state commit.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
     playNormal(state,8,8); playNormal(state,1,2);
@@ -398,7 +917,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // Exhausted specials are semantic rejections; nonzero potentially legal specials are explicitly unsupported.
+  // Exhausted specials are semantic rejections; the two later special slices remain explicitly unsupported.
   {
     CollapseGoState exhausted(CollapseGoConfig::allZero(9));
     for(GameActionKind kind: {
@@ -415,7 +934,6 @@ void Tests::runCollapseReducerTests() {
     CollapseGoState unsupported(CollapseGoConfig::allOne(9));
     for(GameActionKind kind: {
       GameActionKind::IMMORTAL,
-      GameActionKind::DOUBLE_START,
       GameActionKind::EIGHTWAY,
     }) {
       expectRejectedAtomically(
@@ -443,7 +961,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // A nonzero-quota Double source recapture reports exact PSK before slice unsupportedness.
+  // A Double start recapture runs exact occupancy-only PSK and rejects before any state commit.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
     playNormal(state,1,2); playNormal(state,1,1);
