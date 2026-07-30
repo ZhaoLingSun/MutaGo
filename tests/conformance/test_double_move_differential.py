@@ -33,6 +33,38 @@ PINNED_DOUBLE_DEFAULT_DIGEST = (
 )
 
 
+def _legacy_eightway_boundary_requests(prefix: str) -> list[dict[str, object]]:
+    suicide = diff.EpisodeBuilder.create(f"{prefix}-eightway-suicide", 9)
+    black_fillers = ((0, 0), (2, 0), (4, 0), (6, 0), (8, 0), (0, 2), (2, 2), (8, 2))
+    white_ring = ((3, 3), (4, 3), (5, 3), (3, 4), (5, 4), (3, 5), (4, 5), (5, 5))
+    for black_point, white_point in zip(black_fillers, white_ring):
+        suicide.add(diff.Color.BLACK, diff.board_action_v1(9, *black_point))
+        suicide.add(diff.Color.WHITE, diff.board_action_v1(9, *white_point))
+    suicide.add(
+        diff.Color.BLACK,
+        diff.board_action_v1(9, 4, 4, diff.ActionKind.EIGHTWAY),
+    )
+
+    psk = diff.EpisodeBuilder.create(f"{prefix}-eightway-psk", 9)
+    for actor, x, y in (
+        (diff.Color.BLACK, 1, 2),
+        (diff.Color.WHITE, 1, 1),
+        (diff.Color.BLACK, 3, 2),
+        (diff.Color.WHITE, 3, 1),
+        (diff.Color.BLACK, 2, 3),
+        (diff.Color.WHITE, 2, 0),
+        (diff.Color.BLACK, 8, 8),
+        (diff.Color.WHITE, 2, 2),
+        (diff.Color.BLACK, 2, 1),
+    ):
+        psk.add(actor, diff.board_action_v1(9, x, y))
+    psk.add(
+        diff.Color.WHITE,
+        diff.board_action_v1(9, 2, 2, diff.ActionKind.EIGHTWAY),
+    )
+    return [suicide.request(), psk.request()]
+
+
 class ContractFixtureBindingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -196,6 +228,17 @@ class CoverageAndDeterministicReexecutionTests(unittest.TestCase):
         self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
         self.assertEqual("UNSUPPORTED_BY_SLICE", observation["transition"]["errorCode"])
         self.assertEqual(response["observations"][-2]["state"], observation["state"])
+
+    def test_eightway_suicide_and_psk_remain_legacy_unsupported_and_roll_back(self) -> None:
+        for request in _legacy_eightway_boundary_requests("python-v1"):
+            response = diff.oracle_episode_response(request)
+            previous, observation = response["observations"][-2:]
+            with self.subTest(episode=request["episodeId"]):
+                self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
+                self.assertEqual(
+                    "UNSUPPORTED_BY_SLICE", observation["transition"]["errorCode"]
+                )
+                self.assertEqual(previous["state"], observation["state"])
 
     def test_captured_double_source_and_noop_settlement_remain_auditable(self) -> None:
         response = self.responses["curated-d4-capture-9-0"]
@@ -786,6 +829,17 @@ class ExecutableIntegrationTests(unittest.TestCase):
         self.assertEqual(
             "UNSUPPORTED", responses[0]["observations"][-1]["transition"]["status"]
         )
+
+    def test_cpp_maps_eightway_suicide_and_psk_to_legacy_unsupported(self) -> None:
+        requests = _legacy_eightway_boundary_requests("cpp-v1")
+        expected = [diff.oracle_episode_response(request) for request in requests]
+        responses, _ = diff.run_probe_requests(self.probe, requests)
+        for request, left, right in zip(requests, expected, responses):
+            with self.subTest(episode=request["episodeId"]):
+                diff.compare_exact(left, right, episode_id=request["episodeId"])
+                previous, observation = right["observations"][-2:]
+                self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
+                self.assertEqual(previous["state"], observation["state"])
 
     def test_cpp_action_reexecution_and_prefixes_are_immutable_at_pending_and_settlement_boundaries(self) -> None:
         full = diff.fixture_request()

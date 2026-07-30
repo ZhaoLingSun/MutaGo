@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded test-only Immortal Increment 2 C++/Python differential carrier.
+"""Bounded test-only Eightway Increment 3 C++/Python differential carrier.
 
 The protocol literal and every carrier field are explicitly UNFROZEN.  C++
 executes the production reducer; expectations come only from the independent
@@ -37,15 +37,13 @@ from mutago.collapse_go import (  # noqa: E402
     OracleConfig,
     Phase,
     PlayerQuotas,
-    RejectionCode,
     SettlementState,
     SpecialQuotas,
     StoneState,
-    UnsupportedSliceAction,
     apply_action,
     decode_action_v1,
     new_game,
-    scan_n4_groups,
+    scan_mixed_groups,
 )
 from tools.contract.contract import (  # noqa: E402
     DESCRIPTOR_PATH,
@@ -63,18 +61,18 @@ FIXTURE_PATH = (
     / "tests"
     / "contracts"
     / "examples"
-    / "conformance-fixture-immortal-true-eye-settlement-v1.example.json"
+    / "conformance-fixture-eightway-immortal-split-v1.example.json"
 )
-PROTOCOL_VERSION = "immortal-diff-v2-unfrozen"
-GENERATOR_VERSION = "sha256-counter-immortal-v2-unfrozen"
-DEFAULT_SEED = "mutago-immortal-increment-2"
+PROTOCOL_VERSION = "eightway-diff-v3-unfrozen"
+GENERATOR_VERSION = "sha256-counter-eightway-v3-unfrozen"
+DEFAULT_SEED = "mutago-eightway-increment-3"
 DEFAULT_CANDIDATE_COUNT = 256
 MIN_RANDOM_CANDIDATE_COUNT = 64
 MAX_RANDOM_CANDIDATE_COUNT = 4096
 MAX_EPISODE_STEPS = 160
 MAX_TEST_QUOTA = 4
 MAX_REQUEST_FRAME_BYTES = 1024 * 1024
-MAX_RESPONSE_FRAME_BYTES = 64 * 1024 * 1024
+MAX_RESPONSE_FRAME_BYTES = 96 * 1024 * 1024
 MAX_PROBE_STDOUT_BYTES = 256 * 1024 * 1024
 MAX_PROBE_STDERR_BYTES = 1024 * 1024
 PROBE_TIMEOUT_SECONDS = 180
@@ -118,17 +116,23 @@ def quotas(
     black_double: int = 1,
     white_double: int = 1,
     eightway: int = 1,
+    black_eightway: int | None = None,
+    white_eightway: int | None = None,
 ) -> dict[str, object]:
+    if black_eightway is None:
+        black_eightway = eightway
+    if white_eightway is None:
+        white_eightway = eightway
     return {
         "BLACK": {
             "IMMORTAL": black_immortal,
             "DOUBLE_START": black_double,
-            "EIGHTWAY": eightway,
+            "EIGHTWAY": black_eightway,
         },
         "WHITE": {
             "IMMORTAL": white_immortal,
             "DOUBLE_START": white_double,
-            "EIGHTWAY": eightway,
+            "EIGHTWAY": white_eightway,
         },
     }
 
@@ -152,7 +156,7 @@ def validate_episode_request(request: object) -> Mapping[str, object]:
     frame = hardened._require_exact_fields(
         request,
         frozenset(("protocolVersion", "episodeId", "boardSize", "initialQuotas", "steps")),
-        "Immortal episode request",
+        "Eightway episode request",
     )
     if frame["protocolVersion"] != PROTOCOL_VERSION:
         raise ProtocolError(f"protocolVersion must be {PROTOCOL_VERSION}")
@@ -192,19 +196,10 @@ def validate_episode_request(request: object) -> Mapping[str, object]:
     return frame
 
 
-def _apply_v2_adapter(state, actor: Color, action: Mapping[str, object]):
-    try:
-        transition = apply_action(state, actor, action)
-    except UnsupportedSliceAction:
-        return None
-    kind = decode_action_v1(action, state.config.board_size).kind
-    if kind is ActionKind.EIGHTWAY and (
-        transition.accepted
-        or transition.rejection_code
-        in (RejectionCode.SUICIDE, RejectionCode.POSITIONAL_SUPERKO)
-    ):
-        return None
-    return transition
+def _apply_v3_adapter(state, actor: Color, action: Mapping[str, object]):
+    """Apply every action kind through the independent Python oracle."""
+
+    return apply_action(state, actor, action)
 
 
 def _occupancy(value) -> dict[str, object]:
@@ -259,7 +254,7 @@ def _groups(board, ledger) -> list[dict[str, object]]:
             "protected": group.protected,
             "stones": list(group.stones),
         }
-        for group in scan_n4_groups(board, ledger)
+        for group in scan_mixed_groups(board, ledger)
     ]
 
 
@@ -297,6 +292,11 @@ def state_projection(state) -> dict[str, object]:
         for group in groups
         for point in group["immortalAnchors"]
     )
+    eightway_anchors = sorted(
+        point
+        for group in groups
+        for point in group["eightwayAnchors"]
+    )
     return {
         "actor": state.actor.value if state.actor is not None else None,
         "atomicActionCount": state.atomic_action_count,
@@ -305,6 +305,7 @@ def state_projection(state) -> dict[str, object]:
         "eventLogLength": state.log_position,
         "expiredQuotas": _quota_projection(state.expired_quotas),
         "groups": groups,
+        "eightwayAnchors": eightway_anchors,
         "immortalAnchors": anchors,
         "initialQuotas": _quota_projection(state.initial_quotas),
         "ledger": [_ledger(event) for event in state.ledger],
@@ -339,7 +340,7 @@ def _atomic_ledger(previous, transition):
                     final,
                     ability_state=(
                         AbilityState.INACTIVE
-                        if final.kind is ActionKind.IMMORTAL
+                        if final.kind in (ActionKind.IMMORTAL, ActionKind.EIGHTWAY)
                         else AbilityState.CONSUMED
                     ),
                     stone_state=StoneState.CAPTURED,
@@ -353,7 +354,7 @@ def _atomic_ledger(previous, transition):
                     final,
                     ability_state=(
                         AbilityState.ARMED
-                        if final.kind is ActionKind.IMMORTAL
+                        if final.kind in (ActionKind.IMMORTAL, ActionKind.EIGHTWAY)
                         else AbilityState.CONSUMED
                     ),
                     stone_state=StoneState.ON_BOARD,
@@ -371,7 +372,11 @@ def _atomic_snapshot(previous, transition) -> dict[str, object]:
     board = type(previous.board).from_stones(previous.board.size, event.stable_stones)
     remaining = _quota_projection(previous.remaining_quotas)
     used = _quota_projection(previous.used_quotas)
-    if action_kind in (ActionKind.IMMORTAL, ActionKind.DOUBLE_START):
+    if action_kind in (
+        ActionKind.IMMORTAL,
+        ActionKind.DOUBLE_START,
+        ActionKind.EIGHTWAY,
+    ):
         owner = event.actor.value
         remaining[owner][action_kind.value] -= 1
         used[owner][action_kind.value] += 1
@@ -392,6 +397,11 @@ def _atomic_snapshot(previous, transition) -> dict[str, object]:
         for group in groups
         for point in group["immortalAnchors"]
     )
+    eightway_anchors = sorted(
+        point
+        for group in groups
+        for point in group["eightwayAnchors"]
+    )
     atomic_actor = (
         event.actor if action_kind is ActionKind.DOUBLE_START else event.actor.opponent()
     )
@@ -407,6 +417,7 @@ def _atomic_snapshot(previous, transition) -> dict[str, object]:
         "eventLogLength": event.log_position,
         "expiredQuotas": _quota_projection(previous.expired_quotas),
         "groups": groups,
+        "eightwayAnchors": eightway_anchors,
         "immortalAnchors": anchors,
         "initialQuotas": _quota_projection(previous.initial_quotas),
         "ledger": [_ledger(item) for item in ledger],
@@ -485,23 +496,7 @@ def transition_projection(
     actor: Color,
     action: Mapping[str, object],
     transition,
-    *,
-    unsupported: bool = False,
 ) -> dict[str, object]:
-    if unsupported:
-        return {
-            "accepted": False,
-            "action": dict(action),
-            "atomicEvent": None,
-            "atomicSnapshot": None,
-            "candidateActor": actor.value,
-            "errorCode": "UNSUPPORTED_BY_SLICE",
-            "positionalSuperkoAppends": 0,
-            "settlement": None,
-            "status": "UNSUPPORTED",
-            "terminalEvent": None,
-            "transitionKind": "UNSUPPORTED",
-        }
     if not transition.accepted:
         return {
             "accepted": False,
@@ -540,22 +535,17 @@ def transition_projection(
 def oracle_episode_response(
     request: object, *, deadline: float | None = None
 ) -> dict[str, object]:
-    _check_deadline(deadline, "Python Immortal oracle request validation")
+    _check_deadline(deadline, "Python Eightway oracle request validation")
     frame = validate_episode_request(request)
     state = new_game(_oracle_config(frame["initialQuotas"], frame["boardSize"]))
     observations = []
     for step_index, step in enumerate(frame["steps"], start=1):
-        _check_deadline(deadline, "Python Immortal oracle execution")
+        _check_deadline(deadline, "Python Eightway oracle execution")
         previous = state
         actor = Color(step["candidateActor"])
-        transition = _apply_v2_adapter(state, actor, step["action"])
-        if transition is None:
-            projected = transition_projection(
-                previous, actor, step["action"], None, unsupported=True
-            )
-        else:
-            state = transition.state
-            projected = transition_projection(previous, actor, step["action"], transition)
+        transition = _apply_v3_adapter(state, actor, step["action"])
+        state = transition.state
+        projected = transition_projection(previous, actor, step["action"], transition)
         observations.append(
             {"state": state_projection(state), "stepIndex": step_index, "transition": projected}
         )
@@ -569,7 +559,14 @@ def oracle_episode_response(
     }
 
 
-def _validate_shape(value: object, template: object, context: str) -> None:
+def _validate_shape(
+    value: object,
+    template: object,
+    context: str,
+    *,
+    deadline: float | None = None,
+) -> None:
+    _check_deadline(deadline, "Eightway response shape validation")
     if template is None:
         if value is not None:
             raise ProtocolError(f"{context} must be null")
@@ -587,17 +584,26 @@ def _validate_shape(value: object, template: object, context: str) -> None:
                 f"unknown={sorted(actual - expected, key=repr)}"
             )
         for key in template:
-            _validate_shape(value[key], template[key], f"{context}.{key}")
+            _validate_shape(
+                value[key], template[key], f"{context}.{key}", deadline=deadline
+            )
     elif type(template) is list:
         if len(value) != len(template):
             raise ProtocolError(
                 f"{context} length differs: {len(value)} != {len(template)}"
             )
         for index, (item, item_template) in enumerate(zip(value, template)):
-            _validate_shape(item, item_template, f"{context}[{index}]")
+            _validate_shape(
+                item, item_template, f"{context}[{index}]", deadline=deadline
+            )
 
 
-def _derive_v2_groups(state: Mapping[str, object], context: str) -> list[dict[str, object]]:
+def _derive_v3_groups(
+    state: Mapping[str, object],
+    context: str,
+    *,
+    allow_zero_liberty: bool = False,
+) -> list[dict[str, object]]:
     board_size = state["boardSize"]
     point_count = board_size * board_size
     occupied_by_color = {
@@ -615,22 +621,31 @@ def _derive_v2_groups(state: Mapping[str, object], context: str) -> list[dict[st
         color: set(points) for color, points in occupied_by_color.items()
     }
     occupied = occupied_sets["BLACK"] | occupied_sets["WHITE"]
-    armed_by_color = {"BLACK": set(), "WHITE": set()}
+    immortal_by_color = {"BLACK": set(), "WHITE": set()}
+    eightway_by_color = {"BLACK": set(), "WHITE": set()}
     for entry in state["ledger"]:
         if (
-            entry["kind"] == "IMMORTAL"
+            entry["kind"] in ("IMMORTAL", "EIGHTWAY")
             and entry["abilityState"] == "ARMED"
             and entry["stoneState"] == "ON_BOARD"
             and not entry["tombstone"]
             and entry["sourcePoint"] in occupied_sets[entry["owner"]]
         ):
-            armed_by_color[entry["owner"]].add(entry["sourcePoint"])
+            target = (
+                immortal_by_color
+                if entry["kind"] == "IMMORTAL"
+                else eightway_by_color
+            )
+            target[entry["owner"]].add(entry["sourcePoint"])
 
-    def neighbors(point: int) -> set[int]:
+    def neighbors(point: int, include_diagonal: bool = False) -> set[int]:
         x = point % board_size
         y = point // board_size
         result = set()
-        for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
+        offsets = [(0, -1), (-1, 0), (1, 0), (0, 1)]
+        if include_diagonal:
+            offsets.extend(((-1, -1), (1, -1), (-1, 1), (1, 1)))
+        for dx, dy in offsets:
             nx = x + dx
             ny = y + dy
             if 0 <= nx < board_size and 0 <= ny < board_size:
@@ -649,22 +664,39 @@ def _derive_v2_groups(state: Mapping[str, object], context: str) -> list[dict[st
                 if point in component:
                     continue
                 component.add(point)
-                frontier.extend(
-                    sorted((neighbors(point) & occupied_sets[color]) - component)
-                )
+                for other in sorted(occupied_sets[color] - component):
+                    delta_x = abs((point % board_size) - (other % board_size))
+                    delta_y = abs((point // board_size) - (other // board_size))
+                    orthogonal = delta_x + delta_y == 1
+                    diagonal = delta_x == 1 and delta_y == 1
+                    if orthogonal or (
+                        diagonal
+                        and (
+                            point in eightway_by_color[color]
+                            or other in eightway_by_color[color]
+                        )
+                    ):
+                        frontier.append(other)
             remaining -= component
             liberties = set()
             for point in component:
-                liberties.update(neighbors(point) - occupied)
-            anchors = sorted(component & armed_by_color[color])
-            protected = bool(anchors)
-            if not liberties and not protected:
+                liberties.update(
+                    neighbors(
+                        point,
+                        include_diagonal=point in eightway_by_color[color],
+                    )
+                    - occupied
+                )
+            immortal_anchors = sorted(component & immortal_by_color[color])
+            eightway_anchors = sorted(component & eightway_by_color[color])
+            protected = bool(immortal_anchors)
+            if not liberties and not protected and not allow_zero_liberty:
                 raise ProtocolError(f"{context} contains an unprotected zero-liberty group")
             groups.append(
                 {
                     "color": color,
-                    "eightwayAnchors": [],
-                    "immortalAnchors": anchors,
+                    "eightwayAnchors": eightway_anchors,
+                    "immortalAnchors": immortal_anchors,
                     "liberties": sorted(liberties),
                     "protected": protected,
                     "stones": sorted(component),
@@ -780,8 +812,6 @@ def _validate_state_invariants(state: Mapping[str, object], context: str) -> Non
             raise ProtocolError(f"{context} ledger sourceStoneId is not canonical")
         if kind not in ("IMMORTAL", "DOUBLE_START", "EIGHTWAY"):
             raise ProtocolError(f"{context} ledger kind is not a special action")
-        if kind == "EIGHTWAY":
-            raise ProtocolError(f"{context} exposes unsupported Eightway ledger state")
         pending = entry["settlementState"] == "PENDING"
         settled = entry["settlementState"] == "SETTLED"
         if not pending and not settled:
@@ -792,12 +822,10 @@ def _validate_state_invariants(state: Mapping[str, object], context: str) -> Non
                 raise ProtocolError(f"{context} Double ledger lifecycle differs")
         else:
             if pending:
-                if (
-                    entry["abilityState"] != "ARMED"
-                    or entry["stoneState"] != "ON_BOARD"
-                    or entry["tombstone"]
-                ):
-                    raise ProtocolError(f"{context} live anchor lifecycle differs")
+                on_board = entry["stoneState"] == "ON_BOARD"
+                expected_ability = "ARMED" if on_board else "INACTIVE"
+                if entry["abilityState"] != expected_ability or entry["tombstone"] == on_board:
+                    raise ProtocolError(f"{context} pending anchor lifecycle differs")
             elif entry["abilityState"] != "INACTIVE" or not entry["tombstone"]:
                 raise ProtocolError(f"{context} settled anchor lifecycle differs")
         if state["settlementCompleted"] != settled:
@@ -881,7 +909,7 @@ def _validate_state_invariants(state: Mapping[str, object], context: str) -> Non
         ):
             raise ProtocolError(f"{context} pending Double linkage differs")
 
-    expected_groups = _derive_v2_groups(state, context)
+    expected_groups = _derive_v3_groups(state, context)
     expected_armed = sorted(
         anchor
         for group in expected_groups
@@ -889,6 +917,13 @@ def _validate_state_invariants(state: Mapping[str, object], context: str) -> Non
     )
     if state["immortalAnchors"] != expected_armed:
         raise ProtocolError(f"{context} global Immortal anchors differ from topology")
+    expected_eightway = sorted(
+        anchor
+        for group in expected_groups
+        for anchor in group["eightwayAnchors"]
+    )
+    if state["eightwayAnchors"] != expected_eightway:
+        raise ProtocolError(f"{context} global Eightway anchors differ from topology")
     if state["groups"] != expected_groups:
         raise ProtocolError(
             f"{context} group color, connectivity, liberties, anchors, protection, or order differs"
@@ -995,7 +1030,8 @@ def _validate_accepted_state_lineage(
     actual_event_ids = [step["ledgerEventId"] for step in settlement["steps"]]
     if actual_event_ids != expected_event_ids:
         raise ProtocolError(f"{context} settlement steps do not bind the ledger in reverse order")
-    ledger_by_id = {entry["eventId"]: entry for entry in snapshot_ledger}
+    working_ledger = copy.deepcopy(snapshot_ledger)
+    ledger_by_id = {entry["eventId"]: entry for entry in working_ledger}
     for settlement_step in settlement["steps"]:
         entry = ledger_by_id[settlement_step["ledgerEventId"]]
         if (
@@ -1012,6 +1048,24 @@ def _validate_accepted_state_lineage(
         )
         if settlement_step["abilityDeactivated"] != expected_deactivation:
             raise ProtocolError(f"{context} settlement ability disposition differs from ledger")
+        entry["abilityState"] = "INACTIVE"
+        entry["settlementState"] = "SETTLED"
+        entry["tombstone"] = True
+        removed = {
+            ("BLACK" if key == "black" else "WHITE", point)
+            for batch in settlement_step["removalBatches"]
+            for key in ("black", "white")
+            for point in batch[key]
+        }
+        for source in working_ledger:
+            if (
+                source["stoneState"] == "ON_BOARD"
+                and (source["owner"], source["sourcePoint"]) in removed
+            ):
+                source["stoneState"] = "CAPTURED"
+                if source["kind"] in ("IMMORTAL", "EIGHTWAY"):
+                    source["abilityState"] = "INACTIVE"
+                    source["tombstone"] = True
 
 
 def _validate_complete_accepted_progression(
@@ -1235,14 +1289,39 @@ def _validate_complete_accepted_progression(
         removed_points: set[int] = set()
         for settlement_step in settlement["steps"]:
             entry = ledger_by_id[settlement_step["ledgerEventId"]]
+            expected_deactivation = (
+                entry["kind"] in ("IMMORTAL", "EIGHTWAY")
+                and entry["abilityState"] == "ARMED"
+                and entry["stoneState"] == "ON_BOARD"
+            )
             entry["abilityState"] = "INACTIVE"
             entry["settlementState"] = "SETTLED"
             entry["tombstone"] = True
-            for batch in settlement_step["removalBatches"]:
+            expected_batches = []
+            while True:
+                closure_projection = dict(snapshot)
+                closure_projection["occupancy"] = {
+                    "black": sorted(working_occupancy["BLACK"]),
+                    "white": sorted(working_occupancy["WHITE"]),
+                }
+                closure_projection["ledger"] = expected_final_ledger
+                closure_groups = _derive_v3_groups(
+                    closure_projection,
+                    f"{context} settlement closure",
+                    allow_zero_liberty=True,
+                )
+                batch = {"black": [], "white": []}
+                for group in closure_groups:
+                    if not group["liberties"] and not group["protected"]:
+                        key = "black" if group["color"] == "BLACK" else "white"
+                        batch[key].extend(group["stones"])
+                batch["black"].sort()
+                batch["white"].sort()
+                if not batch["black"] and not batch["white"]:
+                    break
+                expected_batches.append(batch)
                 for color, key in (("BLACK", "black"), ("WHITE", "white")):
                     batch_points = set(batch[key])
-                    if not batch_points.issubset(working_occupancy[color]):
-                        raise ProtocolError(f"{context} settlement removed a missing stone")
                     working_occupancy[color] -= batch_points
                     removed_points |= batch_points
                     for source in expected_final_ledger:
@@ -1255,6 +1334,14 @@ def _validate_complete_accepted_progression(
                             if source["kind"] in ("IMMORTAL", "EIGHTWAY"):
                                 source["abilityState"] = "INACTIVE"
                                 source["tombstone"] = True
+            if settlement_step["abilityDeactivated"] != expected_deactivation:
+                raise ProtocolError(f"{context} settlement deactivation differs")
+            if settlement_step["removalBatches"] != expected_batches:
+                raise ProtocolError(f"{context} settlement fixed-point closure differs")
+            if settlement_step["noOp"] != (
+                not expected_deactivation and not expected_batches
+            ):
+                raise ProtocolError(f"{context} settlement no-op classification differs")
             expected_step_occupancy = {
                 "black": sorted(working_occupancy["BLACK"]),
                 "white": sorted(working_occupancy["WHITE"]),
@@ -1347,6 +1434,7 @@ def _fresh_state_projection(request: Mapping[str, object]) -> dict[str, object]:
             "WHITE": copy.deepcopy(zero),
         },
         "groups": [],
+        "eightwayAnchors": [],
         "immortalAnchors": [],
         "initialQuotas": initial_quotas,
         "ledger": [],
@@ -1377,8 +1465,8 @@ def validate_episode_response(
     *,
     deadline: float | None = None,
 ) -> Mapping[str, object]:
-    _check_deadline(deadline, "Immortal response validation")
-    _validate_shape(response, expected_shape, "episode response")
+    _check_deadline(deadline, "Eightway response validation")
+    _validate_shape(response, expected_shape, "episode response", deadline=deadline)
     if response["protocolVersion"] != PROTOCOL_VERSION:
         raise ProtocolError("response protocolVersion differs")
     if response["episodeId"] != request["episodeId"]:
@@ -1393,7 +1481,7 @@ def validate_episode_response(
     for index, (observation, step) in enumerate(
         zip(response["observations"], request["steps"]), start=1
     ):
-        _check_deadline(deadline, "Immortal response validation")
+        _check_deadline(deadline, "Eightway response validation")
         if observation["stepIndex"] != index:
             raise ProtocolError(f"observation {index} stepIndex differs")
         transition = observation["transition"]
@@ -1481,15 +1569,6 @@ def validate_episode_response(
                 transition["terminalEvent"],
                 f"observation {index}",
             )
-        elif status == "UNSUPPORTED":
-            if (
-                transition["accepted"]
-                or transition["transitionKind"] != "UNSUPPORTED"
-                or transition["errorCode"] != "UNSUPPORTED_BY_SLICE"
-            ):
-                raise ProtocolError(f"observation {index} unsupported classification differs")
-            if state != previous_state:
-                raise ProtocolError(f"observation {index} unsupported candidate mutated state")
         elif status == "REJECTED":
             if (
                 transition["accepted"]
@@ -1519,17 +1598,20 @@ def parse_canonical_response_line(
     *,
     deadline: float | None = None,
 ) -> Mapping[str, object]:
-    _check_deadline(deadline, "Immortal response parsing")
+    _check_deadline(deadline, "Eightway response parsing")
     if not line:
         raise ProtocolError("probe returned an empty response line")
     encoded = line.encode("utf-8", errors="strict")
     if len(encoded) > MAX_RESPONSE_FRAME_BYTES:
-        raise ProtocolError("probe response exceeds the 64 MiB response limit")
+        raise ProtocolError("probe response exceeds the 96 MiB response limit")
     try:
         parsed = parse_json_bytes(encoded)
     except ContractError as exc:
         raise ProtocolError(f"probe returned invalid restricted-profile JSON: {exc}") from exc
-    if canonical_json(parsed) != line:
+    _check_deadline(deadline, "Eightway response parsing")
+    canonical = canonical_json(parsed)
+    _check_deadline(deadline, "Eightway response canonicalization")
+    if canonical != line:
         raise ProtocolError("probe response is not canonical restricted-profile JSON")
     return validate_episode_response(
         parsed, request, expected_shape, deadline=deadline
@@ -1590,14 +1672,25 @@ def run_probe_requests(
     manifest: Mapping[str, object],
     deadline: float,
 ) -> tuple[list[Mapping[str, object]], str]:
+    if len(expected) != len(requests):
+        raise ProbeError(
+            f"expected response count differs: {len(expected)} != {len(requests)}; "
+            + _probe_failure_context(
+                manifest,
+                requests,
+                [],
+                response_index=0,
+                completed_response_count=0,
+            )
+        )
     request_lines: list[str] = []
     try:
-        _check_deadline(deadline, "Immortal probe setup")
+        _check_deadline(deadline, "Eightway probe setup")
         probe = Path(probe_path).expanduser().resolve()
         if not probe.is_file():
             raise ProbeError(f"probe executable does not exist: {probe}")
         for item in requests:
-            _check_deadline(deadline, "Immortal probe request serialization")
+            _check_deadline(deadline, "Eightway probe request serialization")
             request_lines.append(canonical_json(validate_episode_request(item)))
         completed = hardened._run_probe_process(
             [str(probe)], "".join(line + "\n" for line in request_lines), deadline
@@ -1703,6 +1796,17 @@ def run_probe_requests(
         responses.append(parsed)
         _digest_record(digest, request_line)
         _digest_record(digest, response_line)
+    if len(responses) != len(requests):
+        raise ProbeError(
+            f"validated response count differs: {len(responses)} != {len(requests)}; "
+            + _probe_failure_context(
+                manifest,
+                requests,
+                request_lines,
+                response_index=len(responses),
+                completed_response_count=len(responses),
+            )
+        )
     return responses, digest.hexdigest()
 
 
@@ -1723,11 +1827,11 @@ class EpisodeBuilder:
         self.deadline = deadline
 
     def add(self, actor: Color, action: Mapping[str, object]):
-        _check_deadline(self.deadline, "Immortal corpus generation")
+        _check_deadline(self.deadline, "Eightway corpus generation")
         step = {"candidateActor": actor.value, "action": dict(action)}
         decode_action_v1(step["action"], self.board_size)
         self.steps.append(step)
-        transition = _apply_v2_adapter(self.state, actor, step["action"])
+        transition = _apply_v3_adapter(self.state, actor, step["action"])
         if transition is not None:
             self.state = transition.state
         return transition
@@ -1754,47 +1858,32 @@ class EpisodeBuilder:
         )
 
 
-def _true_eye_sequence(size: int) -> tuple[tuple[Color, int, int], ...]:
-    center = size // 2
-    far = size - 1
-    return (
-        (Color.BLACK, far, far),
-        (Color.WHITE, center, center - 1),
-        (Color.BLACK, far, far - 1),
-        (Color.WHITE, center - 1, center),
-        (Color.BLACK, far - 1, far),
-        (Color.WHITE, center + 1, center),
-        (Color.BLACK, far - 1, far - 1),
-        (Color.WHITE, center, center + 1),
-        (Color.BLACK, far - 2, far),
-        (Color.WHITE, center - 1, center - 1),
-        (Color.BLACK, far, far - 2),
-        (Color.WHITE, center + 1, center - 1),
-        (Color.BLACK, far - 2, far - 2),
-        (Color.WHITE, center - 1, center + 1),
-        (Color.BLACK, far - 2, far - 1),
-        (Color.WHITE, center + 1, center + 1),
-    )
-
-
-def true_eye_settlement_request(
+def eightway_immortal_split_request(
     board_size: int,
     episode_id: str,
     *,
     deadline: float | None = None,
 ) -> dict[str, object]:
+    """Reach a protected mixed group whose newest E pop splits and removes E."""
+
     builder = EpisodeBuilder(episode_id, board_size, deadline=deadline)
-    for actor, x, y in _true_eye_sequence(board_size):
-        builder.accepted(actor, board_action_v1(board_size, x, y))
     center = board_size // 2
-    builder.accepted(
-        Color.BLACK,
-        board_action_v1(board_size, center, center, ActionKind.IMMORTAL),
+    sequence = (
+        (Color.BLACK, ActionKind.IMMORTAL, center - 1, center - 1),
+        (Color.WHITE, ActionKind.NORMAL, center, center - 1),
+        (Color.BLACK, ActionKind.NORMAL, 0, board_size - 1),
+        (Color.WHITE, ActionKind.NORMAL, center - 1, center),
+        (Color.BLACK, ActionKind.EIGHTWAY, center, center),
+        (Color.WHITE, ActionKind.NORMAL, center + 1, center),
+        (Color.BLACK, ActionKind.NORMAL, board_size - 1, board_size - 1),
+        (Color.WHITE, ActionKind.NORMAL, center, center + 1),
     )
-    builder.accepted(Color.WHITE, action_v1(PASS_ACTION_ID))
-    settled = builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
+    for actor, kind, x, y in sequence:
+        builder.accepted(actor, board_action_v1(board_size, x, y, kind))
+    builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
+    settled = builder.accepted(Color.WHITE, action_v1(PASS_ACTION_ID))
     if settled.settlement is None:
-        raise AssertionError("true-eye episode did not trigger settlement")
+        raise AssertionError("Eightway/Immortal split episode did not settle")
     return builder.request()
 
 
@@ -1887,31 +1976,6 @@ def _post_settlement_capture_request(*, deadline: float | None = None) -> dict[s
     return builder.request()
 
 
-def _control_precedence_request(*, deadline: float | None = None) -> dict[str, object]:
-    builder = EpisodeBuilder(
-        "curated-control-precedence-rollback-9",
-        9,
-        quotas(
-            black_immortal=1,
-            white_immortal=0,
-            black_double=1,
-            white_double=0,
-            eightway=1,
-        ),
-        deadline=deadline,
-    )
-    builder.add(Color.WHITE, board_action_v1(9, 4, 4, ActionKind.IMMORTAL))
-    builder.accepted(Color.BLACK, board_action_v1(9, 0, 0, ActionKind.DOUBLE_START))
-    builder.add(Color.BLACK, board_action_v1(9, 1, 0, ActionKind.IMMORTAL))
-    builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
-    builder.add(Color.WHITE, board_action_v1(9, 1, 0, ActionKind.IMMORTAL))
-    builder.add(Color.WHITE, board_action_v1(9, 0, 0, ActionKind.IMMORTAL))
-    builder.add(Color.WHITE, board_action_v1(9, 2, 0, ActionKind.EIGHTWAY))
-    builder.accepted(Color.WHITE, board_action_v1(9, 2, 0))
-    builder.add(Color.BLACK, board_action_v1(9, 3, 0, ActionKind.IMMORTAL))
-    return builder.request()
-
-
 def _occupied_quota_precedence_request(
     *, deadline: float | None = None
 ) -> dict[str, object]:
@@ -1958,14 +2022,15 @@ def _psk_request(*, deadline: float | None = None) -> dict[str, object]:
 
 def _action_t_request(*, deadline: float | None = None) -> dict[str, object]:
     builder = EpisodeBuilder(
-        "curated-action-t-immortal-9",
+        "curated-action-t-eightway-9",
         9,
         quotas(
             black_immortal=0,
-            white_immortal=1,
+            white_immortal=0,
             black_double=0,
             white_double=0,
             eightway=0,
+            white_eightway=1,
         ),
         deadline=deadline,
     )
@@ -1981,7 +2046,203 @@ def _action_t_request(*, deadline: float | None = None) -> dict[str, object]:
         builder.accepted(Color.BLACK, board_action_v1(9, *point))
         if index < len(white):
             builder.accepted(Color.WHITE, board_action_v1(9, *white[index]))
-    builder.accepted(Color.WHITE, board_action_v1(9, 4, 4, ActionKind.IMMORTAL))
+    builder.accepted(Color.WHITE, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    return builder.request()
+
+
+def _n8_liberty_request(*, deadline: float | None = None) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-n8-liberty-versus-normal-suicide-9", 9, deadline=deadline)
+    black_fillers = ((0, 0), (2, 0), (6, 0), (8, 0))
+    white_cross = ((4, 3), (3, 4), (5, 4), (4, 5))
+    for black_point, white_point in zip(black_fillers, white_cross):
+        builder.accepted(Color.BLACK, board_action_v1(9, *black_point))
+        builder.accepted(Color.WHITE, board_action_v1(9, *white_point))
+    rejected = builder.add(Color.BLACK, board_action_v1(9, 4, 4))
+    if rejected.accepted or rejected.rejection_code.value != "SUICIDE":
+        raise AssertionError("NORMAL surrounded-center control stopped being suicide")
+    builder.accepted(Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    return builder.request()
+
+
+def _surrounded_eightway_suicide_request(
+    *, deadline: float | None = None
+) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-eightway-surrounded-center-suicide-9", 9, deadline=deadline)
+    black_fillers = ((0, 0), (2, 0), (4, 0), (6, 0), (8, 0), (0, 2), (2, 2), (8, 2))
+    white_ring = ((3, 3), (4, 3), (5, 3), (3, 4), (5, 4), (3, 5), (4, 5), (5, 5))
+    for black_point, white_point in zip(black_fillers, white_ring):
+        builder.accepted(Color.BLACK, board_action_v1(9, *black_point))
+        builder.accepted(Color.WHITE, board_action_v1(9, *white_point))
+    rejected = builder.add(
+        Color.BLACK,
+        board_action_v1(9, 4, 4, ActionKind.EIGHTWAY),
+    )
+    if rejected.accepted or rejected.rejection_code.value != "SUICIDE":
+        raise AssertionError("fully surrounded Eightway control stopped being suicide")
+    return builder.request()
+
+
+def _topology_edges_request(*, deadline: float | None = None) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-eightway-endpoints-shoulders-separation-9", 9, deadline=deadline)
+    for actor, action in (
+        (Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY)),
+        (Color.WHITE, board_action_v1(9, 4, 3)),
+        (Color.BLACK, board_action_v1(9, 3, 3)),
+        (Color.WHITE, board_action_v1(9, 3, 4)),
+        (Color.BLACK, board_action_v1(9, 1, 1)),
+        (Color.WHITE, board_action_v1(9, 8, 8)),
+        (Color.BLACK, board_action_v1(9, 2, 2)),
+        (Color.WHITE, board_action_v1(9, 6, 6, ActionKind.EIGHTWAY)),
+        (Color.BLACK, board_action_v1(9, 0, 8)),
+        (Color.WHITE, board_action_v1(9, 5, 5)),
+    ):
+        builder.accepted(actor, action)
+    return builder.request()
+
+
+def _captured_eightway_noop_request(
+    *, deadline: float | None = None
+) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-captured-pending-eightway-noop-9", 9, deadline=deadline)
+    for actor, action in (
+        (Color.BLACK, board_action_v1(9, 0, 0, ActionKind.EIGHTWAY)),
+        (Color.WHITE, board_action_v1(9, 1, 0)),
+        (Color.BLACK, board_action_v1(9, 8, 8)),
+        (Color.WHITE, board_action_v1(9, 0, 1)),
+        (Color.BLACK, board_action_v1(9, 7, 8)),
+        (Color.WHITE, board_action_v1(9, 1, 1)),
+        (Color.BLACK, action_v1(PASS_ACTION_ID)),
+        (Color.WHITE, action_v1(PASS_ACTION_ID)),
+    ):
+        builder.accepted(actor, action)
+    return builder.request()
+
+
+def _eightway_psk_request(*, deadline: float | None = None) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-eightway-placement-capture-psk-rollback-9", 9, deadline=deadline)
+    for actor, x, y in (
+        (Color.BLACK, 1, 2),
+        (Color.WHITE, 1, 1),
+        (Color.BLACK, 3, 2),
+        (Color.WHITE, 3, 1),
+        (Color.BLACK, 2, 3),
+        (Color.WHITE, 2, 0),
+        (Color.BLACK, 8, 8),
+        (Color.WHITE, 2, 2),
+        (Color.BLACK, 2, 1),
+    ):
+        builder.accepted(actor, board_action_v1(9, x, y))
+    rejected = builder.add(
+        Color.WHITE,
+        board_action_v1(9, 2, 2, ActionKind.EIGHTWAY),
+    )
+    if rejected.accepted or rejected.rejection_code.value != "POSITIONAL_SUPERKO":
+        raise AssertionError("Eightway ko control stopped being positional superko")
+    return builder.request()
+
+
+def _quota_two_request(*, deadline: float | None = None) -> dict[str, object]:
+    builder = EpisodeBuilder(
+        "curated-eightway-quotas-above-one-9",
+        9,
+        quotas(
+            black_immortal=0,
+            white_immortal=0,
+            black_double=0,
+            white_double=0,
+            black_eightway=2,
+            white_eightway=2,
+        ),
+        deadline=deadline,
+    )
+    for actor, x, y in (
+        (Color.BLACK, 0, 0),
+        (Color.WHITE, 8, 8),
+        (Color.BLACK, 2, 0),
+        (Color.WHITE, 6, 8),
+    ):
+        builder.accepted(actor, board_action_v1(9, x, y, ActionKind.EIGHTWAY))
+    exhausted = builder.add(
+        Color.BLACK,
+        board_action_v1(9, 4, 0, ActionKind.EIGHTWAY),
+    )
+    if exhausted.accepted or exhausted.rejection_code.value != "QUOTA_EXHAUSTED":
+        raise AssertionError("Eightway quota-above-one control lost exact exhaustion")
+    return builder.request()
+
+
+def _global_special_order_request(
+    *, deadline: float | None = None
+) -> dict[str, object]:
+    builder = EpisodeBuilder("curated-global-interleaved-i-d-e-order-9", 9, deadline=deadline)
+    for actor, action in (
+        (Color.BLACK, board_action_v1(9, 0, 0, ActionKind.EIGHTWAY)),
+        (Color.WHITE, board_action_v1(9, 8, 8, ActionKind.IMMORTAL)),
+        (Color.BLACK, board_action_v1(9, 1, 0, ActionKind.DOUBLE_START)),
+        (Color.BLACK, board_action_v1(9, 2, 0)),
+        (Color.WHITE, board_action_v1(9, 7, 8, ActionKind.EIGHTWAY)),
+        (Color.BLACK, action_v1(PASS_ACTION_ID)),
+        (Color.WHITE, action_v1(PASS_ACTION_ID)),
+    ):
+        builder.accepted(actor, action)
+    return builder.request()
+
+
+def _newer_immortal_captures_eightway_request(
+    *, deadline: float | None = None
+) -> dict[str, object]:
+    builder = EpisodeBuilder(
+        "curated-newer-immortal-captures-older-eightway-noop-9",
+        9,
+        quotas(
+            black_immortal=1,
+            white_immortal=0,
+            black_double=0,
+            white_double=0,
+            black_eightway=1,
+            white_eightway=0,
+        ),
+        deadline=deadline,
+    )
+    builder.accepted(Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    surround = ((3, 3), (4, 3), (5, 3), (3, 4), (5, 4), (3, 5), (5, 5), (4, 6))
+    for index, point in enumerate(surround):
+        builder.accepted(Color.WHITE, board_action_v1(9, *point))
+        if index < 7:
+            builder.accepted(Color.BLACK, board_action_v1(9, index, 8))
+    builder.accepted(Color.BLACK, board_action_v1(9, 4, 5, ActionKind.IMMORTAL))
+    builder.accepted(Color.WHITE, action_v1(PASS_ACTION_ID))
+    builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
+    return builder.request()
+
+
+def _eightway_precedence_request(
+    *, deadline: float | None = None
+) -> dict[str, object]:
+    builder = EpisodeBuilder(
+        "curated-eightway-rejection-precedence-9",
+        9,
+        quotas(
+            black_immortal=0,
+            white_immortal=0,
+            black_double=1,
+            white_double=0,
+            eightway=0,
+        ),
+        deadline=deadline,
+    )
+    builder.add(Color.BLACK, action_v1(1083))
+    builder.add(Color.WHITE, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    builder.add(Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    builder.accepted(Color.BLACK, board_action_v1(9, 0, 0, ActionKind.DOUBLE_START))
+    builder.add(Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    builder.accepted(Color.BLACK, board_action_v1(9, 1, 0))
+    builder.accepted(Color.WHITE, action_v1(PASS_ACTION_ID))
+    builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
+    builder.add(Color.WHITE, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
+    builder.accepted(Color.WHITE, action_v1(PASS_ACTION_ID))
+    builder.accepted(Color.BLACK, action_v1(PASS_ACTION_ID))
+    builder.add(Color.BLACK, board_action_v1(9, 4, 4, ActionKind.EIGHTWAY))
     return builder.request()
 
 
@@ -1992,7 +2253,7 @@ def transform_request(
     *,
     deadline: float | None = None,
 ) -> dict[str, object]:
-    _check_deadline(deadline, "Immortal D4 request transformation")
+    _check_deadline(deadline, "Eightway D4 request transformation")
     transformed = copy.deepcopy(request)
     transformed["episodeId"] = episode_id
     transformed["steps"] = [
@@ -2011,6 +2272,9 @@ def _transform_points(points: list[int], board_size: int, symmetry: int) -> list
 
 def _transform_state(state: dict[str, object], board_size: int, symmetry: int) -> None:
     hardened._transform_state(state, board_size, symmetry)
+    state["eightwayAnchors"] = _transform_points(
+        state["eightwayAnchors"], board_size, symmetry
+    )
     state["immortalAnchors"] = _transform_points(
         state["immortalAnchors"], board_size, symmetry
     )
@@ -2044,7 +2308,7 @@ def transform_response(
     *,
     deadline: float | None = None,
 ) -> dict[str, object]:
-    _check_deadline(deadline, "Immortal D4 response transformation")
+    _check_deadline(deadline, "Eightway D4 response transformation")
     transformed = copy.deepcopy(response)
     transformed["episodeId"] = episode_id
     _transform_state(transformed["initialState"], board_size, symmetry)
@@ -2057,28 +2321,16 @@ def transform_response(
 def load_contract_fixture(
     path: Path = FIXTURE_PATH, *, deadline: float | None = None
 ) -> dict[str, object]:
-    _check_deadline(deadline, "Immortal contract fixture loading")
+    _check_deadline(deadline, "Eightway contract fixture loading")
     fixture = parse_json_bytes(path.read_bytes())
     if type(fixture) is not dict:
-        raise ProtocolError("Immortal contract fixture must be a JSON object")
+        raise ProtocolError("Eightway contract fixture must be a JSON object")
     return fixture
 
 
 PINNED_FIXTURE_LEGAL_RANGES_SHA256 = (
-    "e2e1681d2a80320a5ea8addbb95d786dd669614ee0a472bb6871c61a36877271"
+    "c644dd9c6fb65cc3472f1f6764b168d4d0aaac5f8af37691a2cc7e5b90929182"
 )
-
-# The v2 executable carrier intentionally leaves EIGHTWAY unsupported. These
-# fixture-only IDs are nevertheless legal under the frozen N8 rule: after the
-# indicated official-prefix actions, point 180 has no N4 liberty but still has
-# an empty diagonal. Keeping the supplement literal avoids pretending that the
-# carrier computes a general 1,445-action runtime legal mask.
-_OFFICIAL_TRUE_EYE_EIGHTWAY_ONLY_LEGAL_IDS = {
-    8: (1263,),
-    10: (1263,),
-    12: (1263,),
-    14: (1263,),
-}
 
 
 def _fixture_legal_ranges_digest(fixture: Mapping[str, object]) -> str:
@@ -2110,7 +2362,12 @@ def _fixture_legal_action_ranges(state) -> list[dict[str, int]]:
     if state.phase is Phase.TERMINAL:
         return []
     legal = [PASS_ACTION_ID]
-    for kind in (ActionKind.NORMAL, ActionKind.IMMORTAL, ActionKind.DOUBLE_START):
+    for kind in (
+        ActionKind.NORMAL,
+        ActionKind.IMMORTAL,
+        ActionKind.DOUBLE_START,
+        ActionKind.EIGHTWAY,
+    ):
         for point in range(state.config.board_size**2):
             action = board_action_v1(
                 state.config.board_size,
@@ -2118,36 +2375,9 @@ def _fixture_legal_action_ranges(state) -> list[dict[str, int]]:
                 point // state.config.board_size,
                 kind,
             )
-            transition = _apply_v2_adapter(state, state.actor, action)
-            if transition is not None and transition.accepted:
+            transition = _apply_v3_adapter(state, state.actor, action)
+            if transition.accepted:
                 legal.append(action["actionId"])
-
-    if state.phase is Phase.COLLAPSE_PLAY and state.pending_double is None:
-        quota = state.remaining_quotas.for_player(state.actor).eightway
-        if quota:
-            for point in range(state.config.board_size**2):
-                normal = board_action_v1(
-                    state.config.board_size,
-                    point % state.config.board_size,
-                    point // state.config.board_size,
-                    ActionKind.NORMAL,
-                )
-                transition = _apply_v2_adapter(state, state.actor, normal)
-                if transition is not None and transition.accepted:
-                    legal.append(
-                        board_action_v1(
-                            state.config.board_size,
-                            point % state.config.board_size,
-                            point // state.config.board_size,
-                            ActionKind.EIGHTWAY,
-                        )["actionId"]
-                    )
-            if state.config.board_size == 19:
-                legal.extend(
-                    _OFFICIAL_TRUE_EYE_EIGHTWAY_ONLY_LEGAL_IDS.get(
-                        state.atomic_action_count, ()
-                    )
-                )
     return _merge_action_ids(legal)
 
 
@@ -2157,6 +2387,7 @@ def _contract_state(
     state = copy.deepcopy(projected)
     groups = state.pop("groups")
     state.pop("eventLogLength")
+    state.pop("eightwayAnchors")
     state.pop("immortalAnchors")
     state.pop("settledLedgerCount")
     state.pop("stableTerminalEventCount")
@@ -2185,19 +2416,19 @@ def _contract_transition(projected: Mapping[str, object]) -> dict[str, object]:
 
 
 def build_official_contract_fixture() -> dict[str, object]:
-    request = true_eye_settlement_request(
-        19, "contract-immortal-true-eye-settlement"
+    request = eightway_immortal_split_request(
+        19, "contract-eightway-immortal-split"
     )
     response = oracle_episode_response(request)
     initial_state = new_game(_oracle_config(request["initialQuotas"], 19))
     states = [initial_state]
     state = initial_state
     for step in request["steps"]:
-        transition = _apply_v2_adapter(
+        transition = _apply_v3_adapter(
             state, Color(step["candidateActor"]), step["action"]
         )
-        if transition is None or not transition.accepted:
-            raise AssertionError("official Immortal fixture sequence stopped being legal")
+        if not transition.accepted:
+            raise AssertionError("official Eightway fixture sequence stopped being legal")
         state = transition.state
         states.append(state)
 
@@ -2270,7 +2501,7 @@ def build_official_contract_fixture() -> dict[str, object]:
         "initialProjection": initial_projection,
         "provenance": {
             "generator": "contract-owner",
-            "generatorVersion": "2",
+            "generatorVersion": "3",
             "kind": "HAND_AUTHORED",
             "seed": None,
         },
@@ -2278,9 +2509,11 @@ def build_official_contract_fixture() -> dict[str, object]:
         "schemaVersion": "conformance-fixture-v1",
         "steps": steps,
         "tags": [
+            "eightway",
             "immortal",
-            "true-eye",
-            "zero-liberty-protection",
+            "mixed-topology",
+            "protection-propagation",
+            "settlement-split",
             "settlement-removal",
             "psk-append",
         ],
@@ -2290,14 +2523,14 @@ def build_official_contract_fixture() -> dict[str, object]:
 def validate_contract_fixture(
     fixture: Mapping[str, object], *, deadline: float | None = None
 ) -> None:
-    _check_deadline(deadline, "Immortal contract fixture validation")
+    _check_deadline(deadline, "Eightway contract fixture validation")
     catalog = SchemaCatalog()
     digest = validate_descriptor(load_json(DESCRIPTOR_PATH), catalog)
     _validate_fixture(fixture, catalog, digest)
     actual = _fixture_legal_ranges_digest(fixture)
     if actual != PINNED_FIXTURE_LEGAL_RANGES_SHA256:
         raise ProtocolError(
-            "checked-in Immortal fixture legalActionRanges literal differs from its pinned digest"
+            "checked-in Eightway fixture legalActionRanges literal differs from its pinned digest"
         )
 
 
@@ -2331,33 +2564,43 @@ def fixture_reexecution_requests(
     fixture: Mapping[str, object], *, deadline: float | None = None
 ) -> list[dict[str, object]]:
     full = fixture_request(fixture, deadline=deadline)
-    armed = copy.deepcopy(full)
-    armed["episodeId"] = "fixture-immortal-armed-prefix"
-    armed["steps"] = armed["steps"][:17]
+    eightway_placement = copy.deepcopy(full)
+    eightway_placement["episodeId"] = "fixture-eightway-placement-prefix"
+    eightway_placement["steps"] = eightway_placement["steps"][:5]
+    protected = copy.deepcopy(full)
+    protected["episodeId"] = "fixture-eightway-mixed-protection-prefix"
+    protected["steps"] = protected["steps"][:8]
     pre_trigger = copy.deepcopy(full)
-    pre_trigger["episodeId"] = "fixture-immortal-pre-trigger-prefix"
-    pre_trigger["steps"] = pre_trigger["steps"][:18]
+    pre_trigger["episodeId"] = "fixture-eightway-pre-trigger-prefix"
+    pre_trigger["steps"] = pre_trigger["steps"][:9]
     reexecution = copy.deepcopy(full)
-    reexecution["episodeId"] = "fixture-immortal-full-reexecution"
+    reexecution["episodeId"] = "fixture-eightway-full-reexecution"
     suffix = copy.deepcopy(full)
-    suffix["episodeId"] = "fixture-immortal-post-settlement-suffix"
+    suffix["episodeId"] = "fixture-eightway-post-settlement-suffix"
     suffix["steps"].append(
-        {"candidateActor": "WHITE", "action": board_action_v1(19, 0, 0)}
+        {"candidateActor": "BLACK", "action": board_action_v1(19, 1, 18)}
     )
     return [
         dict(validate_episode_request(item))
-        for item in (armed, pre_trigger, reexecution, suffix)
+        for item in (
+            eightway_placement,
+            protected,
+            pre_trigger,
+            reexecution,
+            suffix,
+        )
     ]
 
 
-def _strip_v2_state(state: Mapping[str, object]) -> dict[str, object]:
+def _strip_v3_state(state: Mapping[str, object]) -> dict[str, object]:
     stripped = copy.deepcopy(state)
     del stripped["eventLogLength"]
+    del stripped["eightwayAnchors"]
     del stripped["immortalAnchors"]
     return stripped
 
 
-def _strip_v2_transition(transition: Mapping[str, object]) -> dict[str, object]:
+def _strip_v3_transition(transition: Mapping[str, object]) -> dict[str, object]:
     stripped = copy.deepcopy(transition)
     del stripped["atomicSnapshot"]
     if stripped["atomicEvent"] is not None:
@@ -2388,19 +2631,19 @@ def normalized_contract_fixture(fixture: Mapping[str, object]) -> dict[str, obje
     return response
 
 
-def strip_v2_response(response: Mapping[str, object]) -> dict[str, object]:
+def strip_v3_response(response: Mapping[str, object]) -> dict[str, object]:
     stripped = {
         "episodeId": response["episodeId"],
-        "initialState": _strip_v2_state(response["initialState"]),
+        "initialState": _strip_v3_state(response["initialState"]),
         "observations": [],
         "protocolVersion": response["protocolVersion"],
     }
     for observation in response["observations"]:
         stripped["observations"].append(
             {
-                "state": _strip_v2_state(observation["state"]),
+                "state": _strip_v3_state(observation["state"]),
                 "stepIndex": observation["stepIndex"],
-                "transition": _strip_v2_transition(observation["transition"]),
+                "transition": _strip_v3_transition(observation["transition"]),
             }
         )
     return stripped
@@ -2409,23 +2652,23 @@ def strip_v2_response(response: Mapping[str, object]) -> dict[str, object]:
 def generate_curated_episodes(
     fixture: Mapping[str, object], *, deadline: float | None = None
 ) -> list[dict[str, object]]:
-    _check_deadline(deadline, "Immortal curated corpus generation")
+    _check_deadline(deadline, "Eightway curated corpus generation")
     episodes = [fixture_request(fixture, deadline=deadline)]
     episodes.extend(fixture_reexecution_requests(fixture, deadline=deadline))
     for board_size in (9, 13, 19):
-        _check_deadline(deadline, "Immortal curated D4 corpus generation")
-        base = true_eye_settlement_request(
+        _check_deadline(deadline, "Eightway curated D4 corpus generation")
+        base = eightway_immortal_split_request(
             board_size,
-            f"curated-d4-immortal-{board_size}-base",
+            f"curated-d4-eightway-{board_size}-base",
             deadline=deadline,
         )
         for symmetry in range(8):
-            _check_deadline(deadline, "Immortal curated D4 corpus generation")
+            _check_deadline(deadline, "Eightway curated D4 corpus generation")
             episodes.append(
                 transform_request(
                     base,
                     symmetry,
-                    f"curated-d4-immortal-{board_size}-{symmetry}",
+                    f"curated-d4-eightway-{board_size}-{symmetry}",
                     deadline=deadline,
                 )
             )
@@ -2436,10 +2679,18 @@ def generate_curated_episodes(
             _two_anchor_request(deadline=deadline),
             _mixed_ledger_request(deadline=deadline),
             _post_settlement_capture_request(deadline=deadline),
-            _control_precedence_request(deadline=deadline),
             _occupied_quota_precedence_request(deadline=deadline),
             _psk_request(deadline=deadline),
             _action_t_request(deadline=deadline),
+            _n8_liberty_request(deadline=deadline),
+            _surrounded_eightway_suicide_request(deadline=deadline),
+            _topology_edges_request(deadline=deadline),
+            _captured_eightway_noop_request(deadline=deadline),
+            _eightway_psk_request(deadline=deadline),
+            _quota_two_request(deadline=deadline),
+            _global_special_order_request(deadline=deadline),
+            _newer_immortal_captures_eightway_request(deadline=deadline),
+            _eightway_precedence_request(deadline=deadline),
         )
     )
     return episodes
@@ -2454,7 +2705,7 @@ def _first_accepted(
 ) -> dict[str, object] | None:
     point_count = state.config.board_size**2
     for offset in range(point_count):
-        _check_deadline(deadline, "Immortal legal candidate generation")
+        _check_deadline(deadline, "Eightway legal candidate generation")
         point = (start + offset) % point_count
         action = board_action_v1(
             state.config.board_size,
@@ -2462,7 +2713,7 @@ def _first_accepted(
             point // state.config.board_size,
             kind,
         )
-        transition = _apply_v2_adapter(state, state.actor, action)
+        transition = _apply_v3_adapter(state, state.actor, action)
         if transition is not None and transition.accepted:
             return action
     return None
@@ -2482,16 +2733,17 @@ def _random_episode(
         white_immortal=rng.randbelow(3),
         black_double=rng.randbelow(3),
         white_double=rng.randbelow(3),
-        eightway=rng.randbelow(2),
+        black_eightway=rng.randbelow(3),
+        white_eightway=rng.randbelow(3),
     )
     builder = EpisodeBuilder(
-        f"random-immortal-{seed_tag}-{sequence:06d}",
+        f"random-eightway-{seed_tag}-{sequence:06d}",
         board_size,
         initial,
         deadline=deadline,
     )
     while len(builder.steps) < step_count:
-        _check_deadline(deadline, "Immortal random corpus generation")
+        _check_deadline(deadline, "Eightway random corpus generation")
         if builder.state.phase is Phase.TERMINAL:
             builder.add(
                 (Color.BLACK, Color.WHITE)[rng.randbelow(2)],
@@ -2524,8 +2776,13 @@ def _random_episode(
             if mode == 0:
                 action = action_v1(PASS_ACTION_ID)
                 candidate = actor
-            elif mode in (1, 2, 3):
-                kind = (ActionKind.NORMAL, ActionKind.IMMORTAL, ActionKind.DOUBLE_START)[mode - 1]
+            elif mode in (1, 2, 3, 4):
+                kind = (
+                    ActionKind.NORMAL,
+                    ActionKind.IMMORTAL,
+                    ActionKind.DOUBLE_START,
+                    ActionKind.EIGHTWAY,
+                )[mode - 1]
                 action = _first_accepted(
                     builder.state,
                     kind,
@@ -2533,11 +2790,11 @@ def _random_episode(
                     deadline=deadline,
                 ) or action_v1(PASS_ACTION_ID)
                 candidate = actor
-            elif mode == 4 and builder.state.stones:
+            elif mode == 5 and builder.state.stones:
                 point = builder.state.stones[rng.randbelow(len(builder.state.stones))].point
                 action = board_action_v1(board_size, point % board_size, point // board_size, ActionKind.IMMORTAL)
                 candidate = actor
-            elif mode == 5:
+            elif mode == 6:
                 point = rng.randbelow(board_size**2)
                 action = board_action_v1(board_size, point % board_size, point // board_size, ActionKind.EIGHTWAY)
                 candidate = actor
@@ -2561,7 +2818,7 @@ def generate_random_episodes(
             f"candidate_count must be in {MIN_RANDOM_CANDIDATE_COUNT}..{MAX_RANDOM_CANDIDATE_COUNT}"
         )
     rng = Sha256CounterRng(
-        b"MutaGo Immortal Increment 2 v2\x00" + seed.encode("utf-8")
+        b"MutaGo Eightway Increment 3 v3\x00" + seed.encode("utf-8")
     )
     seed_tag = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
     episodes = []
@@ -2583,59 +2840,98 @@ def _compare_fixture_d4_and_prefixes(
     fixture: Mapping[str, object],
     expected_by_id: Mapping[str, Mapping[str, object]],
     actual_by_id: Mapping[str, Mapping[str, object]],
+    requests_by_id: Mapping[str, Mapping[str, object]],
+    manifest: Mapping[str, object],
     *,
     deadline: float | None = None,
 ) -> None:
     normalized = normalized_contract_fixture(fixture)
     fixture_id = fixture["fixtureId"]
-    for side, responses in (("python", expected_by_id), ("cpp", actual_by_id)):
-        hardened.compare_exact(
-            normalized,
-            strip_v2_response(responses[fixture_id]),
-            episode_id=f"{side}-immortal-contract-binding",
-            deadline=deadline,
-        )
-        full = responses[fixture_id]
-        if responses["fixture-immortal-armed-prefix"]["observations"] != full["observations"][:17]:
-            raise DifferentialMismatch(f"{side} armed-state immutable prefix differs")
-        if responses["fixture-immortal-pre-trigger-prefix"]["observations"] != full["observations"][:18]:
-            raise DifferentialMismatch(f"{side} pre-trigger immutable prefix differs")
-        reexecuted = copy.deepcopy(responses["fixture-immortal-full-reexecution"])
-        reexecuted["episodeId"] = fixture_id
-        hardened.compare_exact(
-            full,
-            reexecuted,
-            episode_id=f"{side}-immortal-action-reexecution",
-            deadline=deadline,
-        )
-        suffix = responses["fixture-immortal-post-settlement-suffix"]
-        if suffix["observations"][:19] != full["observations"]:
-            raise DifferentialMismatch(f"{side} post-settlement suffix rewrote prefix")
+    active_request_id = fixture_id
+    try:
+        for side, responses in (("python", expected_by_id), ("cpp", actual_by_id)):
+            active_request_id = fixture_id
+            hardened.compare_exact(
+                normalized,
+                strip_v3_response(responses[fixture_id]),
+                episode_id=f"{side}-eightway-contract-binding",
+                deadline=deadline,
+            )
+            full = responses[fixture_id]
+            for prefix_id, prefix_length, label in (
+                ("fixture-eightway-placement-prefix", 5, "Eightway-placement"),
+                ("fixture-eightway-mixed-protection-prefix", 8, "mixed-protection"),
+                ("fixture-eightway-pre-trigger-prefix", 9, "pre-trigger"),
+            ):
+                active_request_id = prefix_id
+                hardened.compare_exact(
+                    full["observations"][:prefix_length],
+                    responses[prefix_id]["observations"],
+                    episode_id=f"{side}-{label}-immutable-prefix",
+                    deadline=deadline,
+                )
+            active_request_id = "fixture-eightway-full-reexecution"
+            reexecuted = copy.deepcopy(responses[active_request_id])
+            reexecuted["episodeId"] = fixture_id
+            hardened.compare_exact(
+                full,
+                reexecuted,
+                episode_id=f"{side}-eightway-action-reexecution",
+                deadline=deadline,
+            )
+            active_request_id = "fixture-eightway-post-settlement-suffix"
+            suffix = responses[active_request_id]
+            hardened.compare_exact(
+                full["observations"],
+                suffix["observations"][:10],
+                episode_id=f"{side}-post-settlement-immutable-prefix",
+                deadline=deadline,
+            )
 
-    for board_size in (9, 13, 19):
-        base_id = f"curated-d4-immortal-{board_size}-0"
-        for symmetry in range(8):
-            target_id = f"curated-d4-immortal-{board_size}-{symmetry}"
-            inverse = INVERSE_SYMMETRY_IDS[symmetry]
-            for side, responses in (("python", expected_by_id), ("cpp", actual_by_id)):
-                transformed = transform_response(
-                    responses[base_id], board_size, symmetry, target_id, deadline=deadline
-                )
-                hardened.compare_exact(
-                    transformed,
-                    responses[target_id],
-                    episode_id=f"{side}-immortal-d4-{board_size}-{symmetry}",
-                    deadline=deadline,
-                )
-                restored = transform_response(
-                    responses[target_id], board_size, inverse, base_id, deadline=deadline
-                )
-                hardened.compare_exact(
-                    responses[base_id],
-                    restored,
-                    episode_id=f"{side}-immortal-d4-inverse-{board_size}-{symmetry}",
-                    deadline=deadline,
-                )
+        for board_size in (9, 13, 19):
+            base_id = f"curated-d4-eightway-{board_size}-0"
+            for symmetry in range(8):
+                target_id = f"curated-d4-eightway-{board_size}-{symmetry}"
+                inverse = INVERSE_SYMMETRY_IDS[symmetry]
+                for side, responses in (("python", expected_by_id), ("cpp", actual_by_id)):
+                    active_request_id = target_id
+                    transformed = transform_response(
+                        responses[base_id],
+                        board_size,
+                        symmetry,
+                        target_id,
+                        deadline=deadline,
+                    )
+                    hardened.compare_exact(
+                        transformed,
+                        responses[target_id],
+                        episode_id=f"{side}-eightway-d4-{board_size}-{symmetry}",
+                        deadline=deadline,
+                    )
+                    restored = transform_response(
+                        responses[target_id],
+                        board_size,
+                        inverse,
+                        base_id,
+                        deadline=deadline,
+                    )
+                    hardened.compare_exact(
+                        responses[base_id],
+                        restored,
+                        episode_id=f"{side}-eightway-d4-inverse-{board_size}-{symmetry}",
+                        deadline=deadline,
+                    )
+    except (ProbeError, DifferentialMismatch) as exc:
+        request = requests_by_id[active_request_id]
+        raise type(exc)(
+            f"{exc}; "
+            + _context(
+                manifest,
+                request,
+                canonical_json(request),
+                len(request["steps"]),
+            )
+        ) from exc
 
 
 def run_differential(
@@ -2646,21 +2942,38 @@ def run_differential(
     timeout_seconds: float = PROBE_TIMEOUT_SECONDS,
 ) -> dict[str, object]:
     deadline = hardened._new_deadline(timeout_seconds)
-    fixture = load_contract_fixture(deadline=deadline)
-    validate_contract_fixture(fixture, deadline=deadline)
-    curated = generate_curated_episodes(fixture, deadline=deadline)
-    random_episodes = generate_random_episodes(seed, candidate_count, deadline=deadline)
-    episodes = curated + random_episodes
     manifest = {
         "generatorVersion": GENERATOR_VERSION,
         "protocolVersion": PROTOCOL_VERSION,
         "randomCandidateCount": candidate_count,
         "seed": seed,
     }
-    expected = []
-    for request in episodes:
-        _check_deadline(deadline, "Immortal Python oracle corpus execution")
-        expected.append(oracle_episode_response(request, deadline=deadline))
+    episodes: list[dict[str, object]] = []
+    request_lines: list[str] = []
+    context_index = 0
+    try:
+        fixture = load_contract_fixture(deadline=deadline)
+        validate_contract_fixture(fixture, deadline=deadline)
+        curated = generate_curated_episodes(fixture, deadline=deadline)
+        random_episodes = generate_random_episodes(seed, candidate_count, deadline=deadline)
+        episodes = curated + random_episodes
+        request_lines = [canonical_json(request) for request in episodes]
+        expected = []
+        for context_index, request in enumerate(episodes):
+            _check_deadline(deadline, "Eightway Python oracle corpus execution")
+            expected.append(oracle_episode_response(request, deadline=deadline))
+    except ProbeError as exc:
+        raise ProbeError(
+            f"{exc}; "
+            + _probe_failure_context(
+                manifest,
+                episodes,
+                request_lines,
+                response_index=context_index,
+                completed_response_count=0,
+            )
+        ) from exc
+
     actual, digest = run_probe_requests(
         probe_path,
         episodes,
@@ -2672,51 +2985,77 @@ def run_differential(
     accepted = rejected = unsupported = 0
     errors: dict[str, int] = {}
     settlements: dict[str, int] = {}
-    for request, left, right in zip(episodes, expected, actual):
-        _check_deadline(deadline, "Immortal exact corpus comparison")
-        difference = hardened._first_difference(left, right, deadline=deadline)
-        if difference is not None:
-            mismatch_index = next(
-                (
-                    index
-                    for index, (a, b) in enumerate(
-                        zip(left["observations"], right["observations"]), start=1
-                    )
-                    if hardened._first_difference(a, b, deadline=deadline) is not None
-                ),
-                len(request["steps"]),
-            )
-            raise DifferentialMismatch(
-                f"episode {request['episodeId']}: {difference}; "
-                + _context(manifest, request, canonical_json(request), mismatch_index)
-            )
-        for observation in left["observations"]:
-            _check_deadline(deadline, "Immortal summary projection")
-            transition = observation["transition"]
-            if transition["status"] == "ACCEPTED":
-                accepted += 1
-            elif transition["status"] == "REJECTED":
-                rejected += 1
-            else:
-                unsupported += 1
-            error = transition["errorCode"] or "NONE"
-            errors[error] = errors.get(error, 0) + 1
-            reason = (
-                transition["settlement"]["triggerReason"]
-                if transition["settlement"] is not None
-                else "NONE"
-            )
-            settlements[reason] = settlements.get(reason, 0) + 1
+    try:
+        for context_index, (request, left, right) in enumerate(
+            zip(episodes, expected, actual)
+        ):
+            _check_deadline(deadline, "Eightway exact corpus comparison")
+            difference = hardened._first_difference(left, right, deadline=deadline)
+            if difference is not None:
+                mismatch_index = next(
+                    (
+                        index
+                        for index, (a, b) in enumerate(
+                            zip(left["observations"], right["observations"]), start=1
+                        )
+                        if hardened._first_difference(a, b, deadline=deadline) is not None
+                    ),
+                    len(request["steps"]),
+                )
+                raise DifferentialMismatch(
+                    f"episode {request['episodeId']}: {difference}; "
+                    + _context(manifest, request, request_lines[context_index], mismatch_index)
+                )
+            for observation in left["observations"]:
+                _check_deadline(deadline, "Eightway summary projection")
+                transition = observation["transition"]
+                if transition["status"] == "ACCEPTED":
+                    accepted += 1
+                elif transition["status"] == "REJECTED":
+                    rejected += 1
+                else:
+                    unsupported += 1
+                error = transition["errorCode"] or "NONE"
+                errors[error] = errors.get(error, 0) + 1
+                reason = (
+                    transition["settlement"]["triggerReason"]
+                    if transition["settlement"] is not None
+                    else "NONE"
+                )
+                settlements[reason] = settlements.get(reason, 0) + 1
 
-    expected_by_id = {response["episodeId"]: response for response in expected}
-    actual_by_id = {response["episodeId"]: response for response in actual}
-    _compare_fixture_d4_and_prefixes(
-        fixture, expected_by_id, actual_by_id, deadline=deadline
-    )
+        expected_by_id = {response["episodeId"]: response for response in expected}
+        actual_by_id = {response["episodeId"]: response for response in actual}
+        requests_by_id = {request["episodeId"]: request for request in episodes}
+        context_index = -1
+        _compare_fixture_d4_and_prefixes(
+            fixture,
+            expected_by_id,
+            actual_by_id,
+            requests_by_id,
+            manifest,
+            deadline=deadline,
+        )
+    except ProbeError as exc:
+        if context_index < 0:
+            raise
+        raise ProbeError(
+            f"{exc}; "
+            + _probe_failure_context(
+                manifest,
+                episodes,
+                request_lines,
+                response_index=context_index,
+                completed_response_count=len(actual),
+            )
+        ) from exc
+
     curated_count = sum(len(request["steps"]) for request in curated)
     total_count = curated_count + candidate_count
     if accepted + rejected + unsupported != total_count:
-        raise AssertionError("Immortal summary candidate counts are ambiguous")
+        raise AssertionError("Eightway summary candidate counts are ambiguous")
+    if unsupported != 0:
+        raise AssertionError("Eightway v3 emitted a forbidden unsupported classification")
     return {
         "accepted": accepted,
         "candidateCount": total_count,
@@ -2735,7 +3074,7 @@ def run_differential(
         "protocolVersion": PROTOCOL_VERSION,
         "randomCandidateCount": candidate_count,
         "rejected": rejected,
-        "scope": "IMMORTAL_INCREMENT_2_UNFROZEN_TEST_ONLY",
+        "scope": "EIGHTWAY_FULL_SPECIAL_INCREMENT_3_UNFROZEN_TEST_ONLY",
         "seed": seed,
         "settlementReasonCounts": settlements,
         "sha256": digest,
@@ -2745,7 +3084,7 @@ def run_differential(
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run the bounded test-only UNFROZEN Immortal Increment 2 differential"
+        description="Run the bounded test-only UNFROZEN Eightway Increment 3 differential"
     )
     parser.add_argument("--probe", type=Path, required=True)
     parser.add_argument("--seed", default=DEFAULT_SEED)
@@ -2763,7 +3102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seed": args.seed,
         }
         print(
-            f"Immortal Increment 2 differential failed: {exc}; "
+            f"Eightway Increment 3 differential failed: {exc}; "
             f"invocation={canonical_json(invocation)}",
             file=sys.stderr,
         )

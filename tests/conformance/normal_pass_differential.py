@@ -645,12 +645,15 @@ def _apply_v0_slice_action(
 
     transition = apply_action(state, candidate_actor, envelope)
     kind = transition.action.kind
-    immortal_mechanics_reached = kind is ActionKind.IMMORTAL and (
+    armed_mechanics_reached = kind in (
+        ActionKind.IMMORTAL,
+        ActionKind.EIGHTWAY,
+    ) and (
         transition.accepted
         or transition.rejection_code
         in (RejectionCode.SUICIDE, RejectionCode.POSITIONAL_SUPERKO)
     )
-    if immortal_mechanics_reached or (
+    if armed_mechanics_reached or (
         transition.accepted
         and kind in (
             ActionKind.DOUBLE_START,

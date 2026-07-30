@@ -2934,6 +2934,7 @@ def verify_examples(catalog: SchemaCatalog, digest: str, example_dir: Path = EXA
         "semantic-projection-v1.example.json": "semantic-projection-v1",
         "conformance-fixture-v1.example.json": "conformance-fixture-v1",
         "conformance-fixture-double-settlement-v1.example.json": "conformance-fixture-v1",
+        "conformance-fixture-eightway-immortal-split-v1.example.json": "conformance-fixture-v1",
         "conformance-fixture-immortal-true-eye-settlement-v1.example.json": "conformance-fixture-v1",
         "mismatch-bundle-v1.example.json": "mismatch-bundle-v1",
     }

@@ -166,19 +166,22 @@ CollapseGoLedgerEntry::CollapseGoLedgerEntry(
     owner(entryOwner),
     originKind(entryOriginKind),
     sourcePoint(entrySourcePoint),
-    abilityState(entryOriginKind == GameActionKind::IMMORTAL ?
-      CollapseGoLedgerAbilityState::ARMED : CollapseGoLedgerAbilityState::CONSUMED),
+    abilityState(
+      entryOriginKind == GameActionKind::IMMORTAL || entryOriginKind == GameActionKind::EIGHTWAY ?
+      CollapseGoLedgerAbilityState::ARMED : CollapseGoLedgerAbilityState::CONSUMED
+    ),
     stoneState(CollapseGoLedgerStoneState::ON_BOARD),
     settlementState(CollapseGoLedgerSettlementState::PENDING),
-    tombstone(entryOriginKind != GameActionKind::IMMORTAL)
+    tombstone(entryOriginKind != GameActionKind::IMMORTAL && entryOriginKind != GameActionKind::EIGHTWAY)
 {
   if(specialLink < 0 || originActionNumber <= 0 || sourcePoint < 0)
     throw StringError("Collapse Go ledger entry has an invalid identity");
   if(owner != P_BLACK && owner != P_WHITE)
     throw StringError("Collapse Go ledger entry owner must be Black or White");
   if(originKind != GameActionKind::IMMORTAL &&
-     originKind != GameActionKind::DOUBLE_START)
-    throw StringError("Collapse Go Increment 2 ledger entry must reference Immortal or Double");
+     originKind != GameActionKind::DOUBLE_START &&
+     originKind != GameActionKind::EIGHTWAY)
+    throw StringError("Collapse Go ledger entry must reference Immortal, Double, or Eightway");
 }
 
 bool CollapseGoLedgerEntry::operator==(const CollapseGoLedgerEntry& other) const {
@@ -404,6 +407,18 @@ vector<int> CollapseGoState::getArmedImmortalAnchors() const {
   return anchors;
 }
 
+vector<int> CollapseGoState::getArmedEightwaySources() const {
+  vector<int> sources;
+  for(size_t index = 0; index < ledger.size(); index++) {
+    const CollapseGoLedgerEntry& entry = ledger.at(index);
+    if(entry.originKind == GameActionKind::EIGHTWAY &&
+       entry.abilityState == CollapseGoLedgerAbilityState::ARMED)
+      sources.push_back(entry.sourcePoint);
+  }
+  sort(sources.begin(),sources.end());
+  return sources;
+}
+
 const optional<CollapseGoPendingDouble>& CollapseGoState::getPendingDouble() const {
   return pendingDouble;
 }
@@ -506,16 +521,20 @@ void CollapseGoState::checkConsistency() const {
   int64_t whiteImmortalEvents = 0;
   int64_t blackDoubleEvents = 0;
   int64_t whiteDoubleEvents = 0;
+  int64_t blackEightwayEvents = 0;
+  int64_t whiteEightwayEvents = 0;
   set<int64_t> ledgerLinks;
   vector<int> armedImmortalAnchors;
+  vector<int> armedEightwaySources;
   int64_t previousOriginAction = 0;
   GameActionKind previousOriginKind = GameActionKind::NORMAL;
   const size_t firstSettledIndex = ledger.size() - static_cast<size_t>(settledLedgerCount);
   for(size_t index = 0; index < ledger.size(); index++) {
     const CollapseGoLedgerEntry& entry = ledger.at(index);
     if(entry.originKind != GameActionKind::IMMORTAL &&
-       entry.originKind != GameActionKind::DOUBLE_START)
-      throw StringError("Collapse Go N4 ledger contains an unsupported special kind");
+       entry.originKind != GameActionKind::DOUBLE_START &&
+       entry.originKind != GameActionKind::EIGHTWAY)
+      throw StringError("Collapse Go ledger contains an unsupported special kind");
     if(entry.owner != P_BLACK && entry.owner != P_WHITE)
       throw StringError("Collapse Go ledger owner is invalid");
     if(entry.specialLink != entry.originActionNumber || entry.originActionNumber > atomicActionCount)
@@ -523,9 +542,9 @@ void CollapseGoState::checkConsistency() const {
     if(entry.originKind == GameActionKind::DOUBLE_START &&
        entry.originActionNumber >= config.getThreshold())
       throw StringError("Collapse Go Double ledger origin cannot reserve its continuation before threshold");
-    if(entry.originKind == GameActionKind::IMMORTAL &&
+    if(entry.originKind != GameActionKind::DOUBLE_START &&
        entry.originActionNumber > config.getThreshold())
-      throw StringError("Collapse Go Immortal ledger origin exceeds the settlement threshold");
+      throw StringError("Collapse Go armed-special ledger origin exceeds the settlement threshold");
     if(entry.originActionNumber <= previousOriginAction)
       throw StringError("Collapse Go ledger origins must be globally strictly increasing");
     if(previousOriginKind == GameActionKind::DOUBLE_START &&
@@ -563,7 +582,7 @@ void CollapseGoState::checkConsistency() const {
               entry.settlementState != CollapseGoLedgerSettlementState::PENDING)
         throw StringError("Collapse Go pending Double ledger lifecycle is inconsistent");
     }
-    else {
+    else if(entry.originKind == GameActionKind::IMMORTAL) {
       if(shouldBeSettled) {
         if(entry.abilityState != CollapseGoLedgerAbilityState::INACTIVE ||
            entry.settlementState != CollapseGoLedgerSettlementState::SETTLED || !entry.tombstone)
@@ -577,18 +596,39 @@ void CollapseGoState::checkConsistency() const {
         armedImmortalAnchors.push_back(entry.sourcePoint);
       }
     }
+    else {
+      if(shouldBeSettled) {
+        if(entry.abilityState != CollapseGoLedgerAbilityState::INACTIVE ||
+           entry.settlementState != CollapseGoLedgerSettlementState::SETTLED || !entry.tombstone)
+          throw StringError("Collapse Go settled Eightway ledger lifecycle is inconsistent");
+      }
+      else if(entry.abilityState == CollapseGoLedgerAbilityState::ARMED) {
+        if(entry.stoneState != CollapseGoLedgerStoneState::ON_BOARD ||
+           entry.settlementState != CollapseGoLedgerSettlementState::PENDING || entry.tombstone)
+          throw StringError("Collapse Go armed Eightway ledger lifecycle is inconsistent");
+        armedEightwaySources.push_back(entry.sourcePoint);
+      }
+      else if(entry.abilityState != CollapseGoLedgerAbilityState::INACTIVE ||
+              entry.stoneState != CollapseGoLedgerStoneState::CAPTURED ||
+              entry.settlementState != CollapseGoLedgerSettlementState::PENDING || !entry.tombstone)
+        throw StringError("Collapse Go captured pending Eightway ledger lifecycle is inconsistent");
+    }
 
     if(entry.owner == P_BLACK) {
       if(entry.originKind == GameActionKind::IMMORTAL)
         blackImmortalEvents++;
-      else
+      else if(entry.originKind == GameActionKind::DOUBLE_START)
         blackDoubleEvents++;
+      else
+        blackEightwayEvents++;
     }
     else {
       if(entry.originKind == GameActionKind::IMMORTAL)
         whiteImmortalEvents++;
-      else
+      else if(entry.originKind == GameActionKind::DOUBLE_START)
         whiteDoubleEvents++;
+      else
+        whiteEightwayEvents++;
     }
     previousOriginAction = entry.originActionNumber;
     previousOriginKind = entry.originKind;
@@ -600,8 +640,9 @@ void CollapseGoState::checkConsistency() const {
   if(blackUsedQuotas.doubleMove != blackDoubleEvents ||
      whiteUsedQuotas.doubleMove != whiteDoubleEvents)
     throw StringError("Collapse Go used Double quotas do not match the append-only ledger");
-  if(blackUsedQuotas.eightway != 0 || whiteUsedQuotas.eightway != 0)
-    throw StringError("Collapse Go N4 slice cannot contain used Eightway quota");
+  if(blackUsedQuotas.eightway != blackEightwayEvents ||
+     whiteUsedQuotas.eightway != whiteEightwayEvents)
+    throw StringError("Collapse Go used Eightway quotas do not match the append-only ledger");
 
   const bool newestLedgerEntryRequiresContinuation = phase == CollapseGoPhase::COLLAPSE_PLAY &&
     !ledger.empty() && ledger.at(ledger.size() - 1).originKind == GameActionKind::DOUBLE_START &&
@@ -630,7 +671,9 @@ void CollapseGoState::checkConsistency() const {
       throw StringError("Collapse Go pending Double source identity does not match its ledger entry");
   }
 
-  CollapseGoTopology topology = CollapseGoTopology::fullScanN4(position,armedImmortalAnchors);
+  CollapseGoTopology topology = CollapseGoTopology::fullScan(
+    position,armedImmortalAnchors,armedEightwaySources
+  );
   for(const CollapseGoGroup& group: topology.getGroups()) {
     if(group.liberties.empty() && !group.protectedByImmortal)
       throw StringError("Collapse Go stable position contains a zero-liberty unprotected group");
@@ -654,9 +697,10 @@ void CollapseGoState::checkConsistency() const {
       continue;
     }
     if((source.originKind != GameActionKind::IMMORTAL &&
-        source.originKind != GameActionKind::DOUBLE_START) ||
+        source.originKind != GameActionKind::DOUBLE_START &&
+        source.originKind != GameActionKind::EIGHTWAY) ||
        !source.specialLink.has_value() || *source.specialLink != source.originActionNumber)
-      throw StringError("Collapse Go N4 slice contains an invalid special stone source");
+      throw StringError("Collapse Go position contains an invalid special stone source");
 
     const CollapseGoLedgerEntry* matchingEntry = nullptr;
     for(size_t index = 0; index < ledger.size(); index++) {

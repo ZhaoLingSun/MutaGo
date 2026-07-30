@@ -24,6 +24,11 @@ public:
     const CollapseGoPosition& position,
     const std::vector<int>& armedImmortalAnchors
   );
+  static CollapseGoTopology fullScan(
+    const CollapseGoPosition& position,
+    const std::vector<int>& armedImmortalAnchors,
+    const std::vector<int>& armedEightwaySources
+  );
 
   const std::vector<CollapseGoGroup>& getGroups() const;
   int getGroupIndexAt(int point) const;
@@ -34,6 +39,11 @@ public:
     const CollapseGoPosition& position,
     const std::vector<int>& armedImmortalAnchors
   ) const;
+  void checkConsistency(
+    const CollapseGoPosition& position,
+    const std::vector<int>& armedImmortalAnchors,
+    const std::vector<int>& armedEightwaySources
+  ) const;
 
 private:
   int boardSize;
@@ -43,7 +53,8 @@ private:
   explicit CollapseGoTopology(int topologyBoardSize);
   void checkConsistency(
     const CollapseGoPosition& position,
-    const std::vector<bool>& armedImmortalAnchorMask
+    const std::vector<bool>& armedImmortalAnchorMask,
+    const std::vector<bool>& armedEightwaySourceMask
   ) const;
 };
 

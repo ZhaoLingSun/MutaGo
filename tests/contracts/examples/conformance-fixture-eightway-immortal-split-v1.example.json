@@ -1,0 +1,3946 @@
+{
+  "configuration": {
+    "boardSize": 19,
+    "deadStoneShortcut": "DEFERRED",
+    "initialActor": "BLACK",
+    "initialPSKSeed": true,
+    "komi": {
+      "denominator": 2,
+      "numerator": 15,
+      "recipient": "WHITE"
+    },
+    "quotas": {
+      "BLACK": {
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1,
+        "IMMORTAL": 1
+      },
+      "WHITE": {
+        "DOUBLE_START": 1,
+        "EIGHTWAY": 1,
+        "IMMORTAL": 1
+      }
+    },
+    "scoring": "CHINESE_AREA",
+    "threshold": 150
+  },
+  "descriptor": null,
+  "fixtureClass": "CONTRACT_EXAMPLE",
+  "fixtureId": "contract-eightway-immortal-split",
+  "initialProjection": {
+    "debug": {
+      "groups": []
+    },
+    "derived": {
+      "legalActionRanges": [
+        {
+          "first": 0,
+          "last": 1444
+        }
+      ]
+    },
+    "fixtureId": "contract-eightway-immortal-split",
+    "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+    "ruleset": {
+      "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+      "rulesetId": "mutago.collapse-go",
+      "semanticVersion": "0.1.0-draft"
+    },
+    "schemaVersion": "semantic-projection-v1",
+    "state": {
+      "actor": "BLACK",
+      "atomicActionCount": 0,
+      "boardSize": 19,
+      "consecutivePasses": 0,
+      "expiredQuotas": {
+        "BLACK": {
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0,
+          "IMMORTAL": 0
+        },
+        "WHITE": {
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0,
+          "IMMORTAL": 0
+        }
+      },
+      "initialQuotas": {
+        "BLACK": {
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1,
+          "IMMORTAL": 1
+        },
+        "WHITE": {
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1,
+          "IMMORTAL": 1
+        }
+      },
+      "ledger": [],
+      "logPosition": 0,
+      "occupancy": {
+        "black": [],
+        "white": []
+      },
+      "pendingDouble": null,
+      "phase": "COLLAPSE_PLAY",
+      "pskHistory": [
+        {
+          "black": [],
+          "white": []
+        }
+      ],
+      "remainingQuotas": {
+        "BLACK": {
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1,
+          "IMMORTAL": 1
+        },
+        "WHITE": {
+          "DOUBLE_START": 1,
+          "EIGHTWAY": 1,
+          "IMMORTAL": 1
+        }
+      },
+      "revision": 0,
+      "settlementCompleted": false,
+      "stones": [],
+      "terminal": {
+        "ended": false
+      },
+      "threshold": 150,
+      "usedQuotas": {
+        "BLACK": {
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0,
+          "IMMORTAL": 0
+        },
+        "WHITE": {
+          "DOUBLE_START": 0,
+          "EIGHTWAY": 0,
+          "IMMORTAL": 0
+        }
+      }
+    },
+    "stepIndex": 0,
+    "transition": null
+  },
+  "provenance": {
+    "generator": "contract-owner",
+    "generatorVersion": "3",
+    "kind": "HAND_AUTHORED",
+    "seed": null
+  },
+  "ruleset": {
+    "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+    "rulesetId": "mutago.collapse-go",
+    "semanticVersion": "0.1.0-draft"
+  },
+  "schemaVersion": "conformance-fixture-v1",
+  "steps": [
+    {
+      "candidate": {
+        "action": {
+          "actionId": 521,
+          "kind": "IMMORTAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "BLACK",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                161,
+                179
+              ],
+              "protected": true,
+              "stones": [
+                160
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 161,
+              "last": 520
+            },
+            {
+              "first": 522,
+              "last": 881
+            },
+            {
+              "first": 883,
+              "last": 1242
+            },
+            {
+              "first": 1244,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "WHITE",
+          "atomicActionCount": 1,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 1,
+          "occupancy": {
+            "black": [
+              160
+            ],
+            "white": []
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 1,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 1,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 521,
+              "kind": "IMMORTAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 1,
+            "actor": "BLACK",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-1",
+            "pskHistoryIndex": 1,
+            "stableOccupancy": {
+              "black": [
+                160
+              ],
+              "white": []
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 1
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 161,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "WHITE",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                179
+              ],
+              "protected": true,
+              "stones": [
+                160
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162,
+                180
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 360
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "BLACK",
+          "atomicActionCount": 2,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 2,
+          "occupancy": {
+            "black": [
+              160
+            ],
+            "white": [
+              161
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 2,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 2,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 161,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 2,
+            "actor": "WHITE",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-2",
+            "pskHistoryIndex": 2,
+            "stableOccupancy": {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 2
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 342,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "BLACK",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                179
+              ],
+              "protected": true,
+              "stones": [
+                160
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162,
+                180
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 520
+            },
+            {
+              "first": 523,
+              "last": 702
+            },
+            {
+              "first": 704,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1424
+            },
+            {
+              "first": 1426,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "WHITE",
+          "atomicActionCount": 3,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 3,
+          "occupancy": {
+            "black": [
+              160,
+              342
+            ],
+            "white": [
+              161
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 3,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 3,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 342,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 3,
+            "actor": "BLACK",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-3",
+            "pskHistoryIndex": 3,
+            "stableOccupancy": {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 3
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 179,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "WHITE",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159
+              ],
+              "protected": true,
+              "stones": [
+                160
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162,
+                180
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                180,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 180,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 360
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 902,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1261
+            },
+            {
+              "first": 1263,
+              "last": 1424
+            },
+            {
+              "first": 1426,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "BLACK",
+          "atomicActionCount": 4,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 4,
+          "occupancy": {
+            "black": [
+              160,
+              342
+            ],
+            "white": [
+              161,
+              179
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 4,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 4,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 179,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 4,
+            "actor": "WHITE",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-4",
+            "pskHistoryIndex": 4,
+            "stableOccupancy": {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 4
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 1263,
+          "kind": "EIGHTWAY",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "BLACK",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [
+                180
+              ],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                162,
+                181,
+                198,
+                199,
+                200
+              ],
+              "protected": true,
+              "stones": [
+                160,
+                180
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 181,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 520
+            },
+            {
+              "first": 523,
+              "last": 539
+            },
+            {
+              "first": 542,
+              "last": 702
+            },
+            {
+              "first": 704,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 903,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1261
+            },
+            {
+              "first": 1264,
+              "last": 1424
+            },
+            {
+              "first": 1426,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "WHITE",
+          "atomicActionCount": 5,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            },
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 5,
+          "occupancy": {
+            "black": [
+              160,
+              180,
+              342
+            ],
+            "white": [
+              161,
+              179
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 5,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 5,
+              "originKind": "EIGHTWAY",
+              "point": 180,
+              "sourceId": "stone-5",
+              "specialEventId": "special-5"
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 5,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 1263,
+              "kind": "EIGHTWAY",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 5,
+            "actor": "BLACK",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-5",
+            "pskHistoryIndex": 5,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 5
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 181,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "WHITE",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [
+                180
+              ],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                162,
+                198,
+                199,
+                200
+              ],
+              "protected": true,
+              "stones": [
+                160,
+                180
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                162,
+                182,
+                200
+              ],
+              "protected": false,
+              "stones": [
+                181
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 182,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 360
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 904,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1082
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "BLACK",
+          "atomicActionCount": 6,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            },
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 6,
+          "occupancy": {
+            "black": [
+              160,
+              180,
+              342
+            ],
+            "white": [
+              161,
+              179,
+              181
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 6,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 5,
+              "originKind": "EIGHTWAY",
+              "point": 180,
+              "sourceId": "stone-5",
+              "specialEventId": "special-5"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 6,
+              "originKind": "NORMAL",
+              "point": 181,
+              "sourceId": "stone-6",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 6,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 181,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 6,
+            "actor": "WHITE",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-6",
+            "pskHistoryIndex": 6,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 6
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 360,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "BLACK",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [
+                180
+              ],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                162,
+                198,
+                199,
+                200
+              ],
+              "protected": true,
+              "stones": [
+                160,
+                180
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                162,
+                182,
+                200
+              ],
+              "protected": false,
+              "stones": [
+                181
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                341,
+                359
+              ],
+              "protected": false,
+              "stones": [
+                360
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 182,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 359
+            },
+            {
+              "first": 361,
+              "last": 520
+            },
+            {
+              "first": 523,
+              "last": 539
+            },
+            {
+              "first": 543,
+              "last": 702
+            },
+            {
+              "first": 704,
+              "last": 720
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 904,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1081
+            },
+            {
+              "first": 1083,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1261
+            },
+            {
+              "first": 1265,
+              "last": 1424
+            },
+            {
+              "first": 1426,
+              "last": 1442
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "WHITE",
+          "atomicActionCount": 7,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            },
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 7,
+          "occupancy": {
+            "black": [
+              160,
+              180,
+              342,
+              360
+            ],
+            "white": [
+              161,
+              179,
+              181
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 7,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 5,
+              "originKind": "EIGHTWAY",
+              "point": 180,
+              "sourceId": "stone-5",
+              "specialEventId": "special-5"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 6,
+              "originKind": "NORMAL",
+              "point": 181,
+              "sourceId": "stone-6",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 7,
+              "originKind": "NORMAL",
+              "point": 360,
+              "sourceId": "stone-7",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 7,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 360,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 7,
+            "actor": "BLACK",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-7",
+            "pskHistoryIndex": 7,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 7
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 199,
+          "kind": "NORMAL",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "WHITE",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [
+                180
+              ],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                162,
+                198,
+                200
+              ],
+              "protected": true,
+              "stones": [
+                160,
+                180
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                162,
+                182,
+                200
+              ],
+              "protected": false,
+              "stones": [
+                181
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                198,
+                200,
+                218
+              ],
+              "protected": false,
+              "stones": [
+                199
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                341,
+                359
+              ],
+              "protected": false,
+              "stones": [
+                360
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 182,
+              "last": 198
+            },
+            {
+              "first": 200,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 359
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 904,
+              "last": 920
+            },
+            {
+              "first": 922,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1081
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "BLACK",
+          "atomicActionCount": 8,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            },
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 8,
+          "occupancy": {
+            "black": [
+              160,
+              180,
+              342,
+              360
+            ],
+            "white": [
+              161,
+              179,
+              181,
+              199
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 8,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 5,
+              "originKind": "EIGHTWAY",
+              "point": 180,
+              "sourceId": "stone-5",
+              "specialEventId": "special-5"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 6,
+              "originKind": "NORMAL",
+              "point": 181,
+              "sourceId": "stone-6",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 8,
+              "originKind": "NORMAL",
+              "point": 199,
+              "sourceId": "stone-8",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 7,
+              "originKind": "NORMAL",
+              "point": 360,
+              "sourceId": "stone-7",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 8,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 199,
+              "kind": "NORMAL",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 8,
+            "actor": "WHITE",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-8",
+            "pskHistoryIndex": 8,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 8
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 1444,
+          "kind": "PASS",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "BLACK",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [
+                180
+              ],
+              "immortalAnchors": [
+                160
+              ],
+              "liberties": [
+                141,
+                159,
+                162,
+                198,
+                200
+              ],
+              "protected": true,
+              "stones": [
+                160,
+                180
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                162,
+                182,
+                200
+              ],
+              "protected": false,
+              "stones": [
+                181
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                198,
+                200,
+                218
+              ],
+              "protected": false,
+              "stones": [
+                199
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                341,
+                359
+              ],
+              "protected": false,
+              "stones": [
+                360
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 182,
+              "last": 198
+            },
+            {
+              "first": 200,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 359
+            },
+            {
+              "first": 361,
+              "last": 520
+            },
+            {
+              "first": 523,
+              "last": 539
+            },
+            {
+              "first": 543,
+              "last": 559
+            },
+            {
+              "first": 561,
+              "last": 702
+            },
+            {
+              "first": 704,
+              "last": 720
+            },
+            {
+              "first": 722,
+              "last": 881
+            },
+            {
+              "first": 884,
+              "last": 900
+            },
+            {
+              "first": 904,
+              "last": 920
+            },
+            {
+              "first": 922,
+              "last": 1063
+            },
+            {
+              "first": 1065,
+              "last": 1081
+            },
+            {
+              "first": 1083,
+              "last": 1242
+            },
+            {
+              "first": 1245,
+              "last": 1261
+            },
+            {
+              "first": 1265,
+              "last": 1281
+            },
+            {
+              "first": 1283,
+              "last": 1424
+            },
+            {
+              "first": 1426,
+              "last": 1442
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "WHITE",
+          "atomicActionCount": 9,
+          "boardSize": 19,
+          "consecutivePasses": 1,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            },
+            {
+              "abilityState": "ARMED",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "PENDING",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "ON_BOARD",
+              "tombstone": false
+            }
+          ],
+          "logPosition": 9,
+          "occupancy": {
+            "black": [
+              160,
+              180,
+              342,
+              360
+            ],
+            "white": [
+              161,
+              179,
+              181,
+              199
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "COLLAPSE_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "revision": 9,
+          "settlementCompleted": false,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 5,
+              "originKind": "EIGHTWAY",
+              "point": 180,
+              "sourceId": "stone-5",
+              "specialEventId": "special-5"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 6,
+              "originKind": "NORMAL",
+              "point": 181,
+              "sourceId": "stone-6",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 8,
+              "originKind": "NORMAL",
+              "point": 199,
+              "sourceId": "stone-8",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 7,
+              "originKind": "NORMAL",
+              "point": 360,
+              "sourceId": "stone-7",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 9,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 1444,
+              "kind": "PASS",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 9,
+            "actor": "BLACK",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-9",
+            "pskHistoryIndex": 9,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": null,
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 9
+    },
+    {
+      "candidate": {
+        "action": {
+          "actionId": 1444,
+          "kind": "PASS",
+          "schemaVersion": "action-v1"
+        },
+        "kind": "ACTION"
+      },
+      "candidateActor": "WHITE",
+      "expectedProjection": {
+        "debug": {
+          "groups": [
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                141,
+                159
+              ],
+              "protected": false,
+              "stones": [
+                160
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                142,
+                162,
+                180
+              ],
+              "protected": false,
+              "stones": [
+                161
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                178,
+                180,
+                198
+              ],
+              "protected": false,
+              "stones": [
+                179
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                162,
+                180,
+                182,
+                200
+              ],
+              "protected": false,
+              "stones": [
+                181
+              ]
+            },
+            {
+              "color": "WHITE",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                180,
+                198,
+                200,
+                218
+              ],
+              "protected": false,
+              "stones": [
+                199
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                323,
+                343
+              ],
+              "protected": false,
+              "stones": [
+                342
+              ]
+            },
+            {
+              "color": "BLACK",
+              "eightwayAnchors": [],
+              "immortalAnchors": [],
+              "liberties": [
+                341,
+                359
+              ],
+              "protected": false,
+              "stones": [
+                360
+              ]
+            }
+          ]
+        },
+        "derived": {
+          "legalActionRanges": [
+            {
+              "first": 0,
+              "last": 159
+            },
+            {
+              "first": 162,
+              "last": 178
+            },
+            {
+              "first": 182,
+              "last": 198
+            },
+            {
+              "first": 200,
+              "last": 341
+            },
+            {
+              "first": 343,
+              "last": 359
+            },
+            {
+              "first": 1444,
+              "last": 1444
+            }
+          ]
+        },
+        "fixtureId": "contract-eightway-immortal-split",
+        "pointEncoding": "BOARD_LOCAL_ROW_MAJOR",
+        "ruleset": {
+          "descriptorSha256": "a21c67d7962b71a3a53b895de824dc6312502362de5341103c0265c2c81d0899",
+          "rulesetId": "mutago.collapse-go",
+          "semanticVersion": "0.1.0-draft"
+        },
+        "schemaVersion": "semantic-projection-v1",
+        "state": {
+          "actor": "BLACK",
+          "atomicActionCount": 10,
+          "boardSize": 19,
+          "consecutivePasses": 0,
+          "expiredQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "initialQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 1,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            }
+          },
+          "ledger": [
+            {
+              "abilityState": "INACTIVE",
+              "eventId": "special-1",
+              "kind": "IMMORTAL",
+              "logicalOrder": 0,
+              "owner": "BLACK",
+              "settlementState": "SETTLED",
+              "sourcePoint": 160,
+              "sourceStoneId": "stone-1",
+              "stoneState": "ON_BOARD",
+              "tombstone": true
+            },
+            {
+              "abilityState": "INACTIVE",
+              "eventId": "special-5",
+              "kind": "EIGHTWAY",
+              "logicalOrder": 4,
+              "owner": "BLACK",
+              "settlementState": "SETTLED",
+              "sourcePoint": 180,
+              "sourceStoneId": "stone-5",
+              "stoneState": "CAPTURED",
+              "tombstone": true
+            }
+          ],
+          "logPosition": 12,
+          "occupancy": {
+            "black": [
+              160,
+              342,
+              360
+            ],
+            "white": [
+              161,
+              179,
+              181,
+              199
+            ]
+          },
+          "pendingDouble": null,
+          "phase": "ORDINARY_PLAY",
+          "pskHistory": [
+            {
+              "black": [],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": []
+            },
+            {
+              "black": [
+                160
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161
+              ]
+            },
+            {
+              "black": [
+                160,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            },
+            {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            },
+            {
+              "black": [
+                160,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            },
+            {
+              "black": [
+                160,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          ],
+          "remainingQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          },
+          "revision": 10,
+          "settlementCompleted": true,
+          "stones": [
+            {
+              "color": "BLACK",
+              "originActionNumber": 1,
+              "originKind": "IMMORTAL",
+              "point": 160,
+              "sourceId": "stone-1",
+              "specialEventId": "special-1"
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 2,
+              "originKind": "NORMAL",
+              "point": 161,
+              "sourceId": "stone-2",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 4,
+              "originKind": "NORMAL",
+              "point": 179,
+              "sourceId": "stone-4",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 6,
+              "originKind": "NORMAL",
+              "point": 181,
+              "sourceId": "stone-6",
+              "specialEventId": null
+            },
+            {
+              "color": "WHITE",
+              "originActionNumber": 8,
+              "originKind": "NORMAL",
+              "point": 199,
+              "sourceId": "stone-8",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 3,
+              "originKind": "NORMAL",
+              "point": 342,
+              "sourceId": "stone-3",
+              "specialEventId": null
+            },
+            {
+              "color": "BLACK",
+              "originActionNumber": 7,
+              "originKind": "NORMAL",
+              "point": 360,
+              "sourceId": "stone-7",
+              "specialEventId": null
+            }
+          ],
+          "terminal": {
+            "ended": false
+          },
+          "threshold": 150,
+          "usedQuotas": {
+            "BLACK": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 1,
+              "IMMORTAL": 1
+            },
+            "WHITE": {
+              "DOUBLE_START": 0,
+              "EIGHTWAY": 0,
+              "IMMORTAL": 0
+            }
+          }
+        },
+        "stepIndex": 10,
+        "transition": {
+          "accepted": true,
+          "atomicEvent": {
+            "action": {
+              "actionId": 1444,
+              "kind": "PASS",
+              "schemaVersion": "action-v1"
+            },
+            "actionNumber": 10,
+            "actor": "WHITE",
+            "captured": {
+              "black": [],
+              "white": []
+            },
+            "eventId": "action-10",
+            "pskHistoryIndex": 10,
+            "stableOccupancy": {
+              "black": [
+                160,
+                180,
+                342,
+                360
+              ],
+              "white": [
+                161,
+                179,
+                181,
+                199
+              ]
+            }
+          },
+          "errorCode": null,
+          "settlement": {
+            "handoffActor": "BLACK",
+            "steps": [
+              {
+                "abilityDeactivated": true,
+                "ledgerEventId": "special-5",
+                "noOp": false,
+                "pskHistoryIndex": 11,
+                "removalBatches": [
+                  {
+                    "black": [
+                      180
+                    ],
+                    "white": []
+                  }
+                ],
+                "stableOccupancy": {
+                  "black": [
+                    160,
+                    342,
+                    360
+                  ],
+                  "white": [
+                    161,
+                    179,
+                    181,
+                    199
+                  ]
+                },
+                "stepIndex": 0
+              },
+              {
+                "abilityDeactivated": true,
+                "ledgerEventId": "special-1",
+                "noOp": false,
+                "pskHistoryIndex": 12,
+                "removalBatches": [],
+                "stableOccupancy": {
+                  "black": [
+                    160,
+                    342,
+                    360
+                  ],
+                  "white": [
+                    161,
+                    179,
+                    181,
+                    199
+                  ]
+                },
+                "stepIndex": 1
+              }
+            ],
+            "triggerReason": "PRE_THRESHOLD_TWO_PASSES"
+          },
+          "terminalEvent": null,
+          "transitionKind": "ATOMIC_ACTION"
+        }
+      },
+      "stepIndex": 10
+    }
+  ],
+  "tags": [
+    "eightway",
+    "immortal",
+    "mixed-topology",
+    "protection-propagation",
+    "settlement-split",
+    "settlement-removal",
+    "psk-append"
+  ]
+}

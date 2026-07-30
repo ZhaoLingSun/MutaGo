@@ -136,18 +136,18 @@ class ImmortalExactLifecycleTests(unittest.TestCase):
     def test_invalid_live_captured_and_settled_lifecycles_are_rejected(self) -> None:
         live = immortal_state()
         event = live.ledger[0]
-        invalid_live_events = (
-            replace(event, ability_state=AbilityState.CONSUMED),
-            replace(event, ability_state=AbilityState.INACTIVE),
-            replace(event, tombstone=True),
-            replace(event, stone_state=StoneState.CAPTURED, tombstone=False),
+        invalid_live_changes = (
+            {"ability_state": AbilityState.CONSUMED},
+            {"ability_state": AbilityState.INACTIVE},
+            {"tombstone": True},
+            {"stone_state": StoneState.CAPTURED, "tombstone": False},
         )
-        for invalid in invalid_live_events:
-            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+        for changes in invalid_live_changes:
+            with self.subTest(changes=changes), self.assertRaisesRegex(
                 ValueError,
                 "Immortal",
             ):
-                replace(live, ledger=(invalid,))
+                replace(event, **changes)
 
         passed = accept(live, Color.WHITE, action(ActionKind.PASS)).state
         settled = accept(passed, Color.BLACK, action(ActionKind.PASS)).state
@@ -253,7 +253,7 @@ class ImmortalExactLifecycleTests(unittest.TestCase):
                 ledger=(fabricated_first, consecutive.ledger[1]),
             )
 
-    def test_used_quota_and_eightway_exclusion_are_exact(self) -> None:
+    def test_used_special_quotas_and_eightway_sources_are_exact(self) -> None:
         live = immortal_state()
         with self.assertRaisesRegex(ValueError, "Immortal quotas"):
             replace(
@@ -262,13 +262,15 @@ class ImmortalExactLifecycleTests(unittest.TestCase):
                 used_quotas=PlayerQuotas.zero(),
             )
 
-        source = live.board.stones[0]
-        eightway_board = Board.from_stones(
-            9,
-            (replace(source, origin_kind=ActionKind.EIGHTWAY),),
-        )
-        with self.assertRaisesRegex(ValueError, "Increment 2 board stones"):
-            replace(live, board=eightway_board)
+        eightway = accept(
+            new_game(OracleConfig(board_size=9)),
+            Color.BLACK,
+            action(ActionKind.EIGHTWAY, x=4, y=4),
+        ).state
+        self.assertEqual(ActionKind.EIGHTWAY, eightway.board.stones[0].origin_kind)
+        self.assertEqual(ActionKind.EIGHTWAY, eightway.ledger[0].kind)
+        self.assertEqual(1, eightway.used_quotas.black.eightway)
+        self.assertEqual(0, eightway.remaining_quotas.black.eightway)
 
     def test_raw_string_kinds_and_impossible_double_steps_are_rejected(self) -> None:
         live = immortal_state()
@@ -546,13 +548,7 @@ class ImmortalExactLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unprotected zero-liberty"):
             replace(
                 protected,
-                ledger=(
-                    replace(
-                        protected.ledger[0],
-                        ability_state=AbilityState.INACTIVE,
-                        tombstone=True,
-                    ),
-                ),
+                ledger=(),
             )
 
 

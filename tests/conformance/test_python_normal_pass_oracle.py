@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 from mutago.collapse_go import (  # noqa: E402
     PASS_ACTION_ID,
     JSON_SAFE_INTEGER_MAX,
+    AbilityState,
     ActionKind,
     ActionV1DecodeError,
     Board,
@@ -23,7 +24,6 @@ from mutago.collapse_go import (  # noqa: E402
     RejectionCode,
     SettlementReason,
     SpecialQuotas,
-    UnsupportedSliceAction,
     apply_action,
     decode_action_v1,
     new_game,
@@ -675,18 +675,20 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
         )
         self.assertIs(state_with_prior_repeat, transition.state)
 
-    def test_nonzero_potentially_legal_eightway_is_unsupported(self) -> None:
+    def test_nonzero_potentially_legal_eightway_is_committed(self) -> None:
         state = new_game(OracleConfig(board_size=9))
-        with self.assertRaises(UnsupportedSliceAction) as caught:
-            apply_action(
-                state,
-                Color.BLACK,
-                action(ActionKind.EIGHTWAY, x=2, y=0),
-            )
-        self.assertEqual(ActionKind.EIGHTWAY, caught.exception.action.kind)
-        self.assertEqual(Color.BLACK, caught.exception.actor)
+        transition = accept(
+            state,
+            Color.BLACK,
+            action(ActionKind.EIGHTWAY, x=2, y=0),
+        )
         self.assertEqual(0, state.atomic_action_count)
         self.assertEqual((Occupancy.empty(),), state.psk_history)
+        self.assertEqual(ActionKind.EIGHTWAY, transition.atomic_event.action.kind)
+        self.assertEqual(1, transition.state.used_quotas.black.eightway)
+        self.assertEqual(0, transition.state.remaining_quotas.black.eightway)
+        self.assertEqual(ActionKind.EIGHTWAY, transition.state.ledger[0].kind)
+        self.assertEqual(AbilityState.ARMED, transition.state.ledger[0].ability_state)
 
     def test_per_player_nonzero_quota_and_ordinary_special_phase(self) -> None:
         config = OracleConfig(
@@ -702,12 +704,13 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
             Color.BLACK,
             action(ActionKind.NORMAL, x=4, y=4),
         ).state
-        with self.assertRaises(UnsupportedSliceAction):
-            apply_action(
-                state,
-                Color.WHITE,
-                action(ActionKind.EIGHTWAY, x=0, y=0),
-            )
+        placed = accept(
+            state,
+            Color.WHITE,
+            action(ActionKind.EIGHTWAY, x=0, y=0),
+        )
+        self.assertEqual(1, placed.state.used_quotas.white.eightway)
+        self.assertEqual(0, placed.state.remaining_quotas.white.eightway)
 
         ordinary = enter_empty_ledger_ordinary(config).state
         for kind, x in (

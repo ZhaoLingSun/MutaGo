@@ -44,45 +44,6 @@ vector<Loc> rowMajorPointsToLocs(
   return locs;
 }
 
-CollapseGoApplyError simulateN4Placement(
-  const CollapseGoState& state,
-  const vector<int>& armedImmortalAnchors,
-  int point,
-  Player actor,
-  const CollapseGoStoneSource& source,
-  CollapseGoPosition& tentativePosition,
-  vector<int>& capturedPoints
-) {
-  tentativePosition.placeStone(point,actor,source);
-
-  CollapseGoTopology firstTopology = CollapseGoTopology::fullScanN4(
-    tentativePosition,armedImmortalAnchors
-  );
-  const Player opponent = getOpp(actor);
-  for(const CollapseGoGroup& group: firstTopology.getGroups()) {
-    if(group.color == opponent && group.liberties.empty() && !group.protectedByImmortal)
-      capturedPoints.insert(capturedPoints.end(),group.stones.begin(),group.stones.end());
-  }
-  sort(capturedPoints.begin(),capturedPoints.end());
-  capturedPoints.erase(unique(capturedPoints.begin(),capturedPoints.end()),capturedPoints.end());
-  tentativePosition.removeStones(capturedPoints);
-
-  CollapseGoTopology secondTopology = CollapseGoTopology::fullScanN4(
-    tentativePosition,armedImmortalAnchors
-  );
-  const CollapseGoGroup& ownGroup = secondTopology.getGroupAt(point);
-  if(ownGroup.liberties.empty() && !ownGroup.protectedByImmortal)
-    return CollapseGoApplyError::SUICIDE;
-
-  PositionalSuperkoKey candidateKey(
-    tentativePosition.getBoardSize(),
-    tentativePosition.getRowMajorOccupancy()
-  );
-  if(state.getPositionalSuperkoHistory().contains(candidateKey))
-    return CollapseGoApplyError::POSITIONAL_SUPERKO;
-  return CollapseGoApplyError::NONE;
-}
-
 }
 
 bool CollapseGoRemovalBatch::operator==(const CollapseGoRemovalBatch& other) const {
@@ -127,6 +88,7 @@ CollapseGoApplyResult::CollapseGoApplyResult()
   : accepted(false),
     error(CollapseGoApplyError::INTERNAL_INVARIANT),
     capturedStones(),
+    atomicStateSnapshot(),
     settlementSteps(),
     settlementTriggered(false),
     settlementReason(CollapseGoSettlementReason::NONE),
@@ -192,6 +154,49 @@ void CollapseGoReducer::appendCurrentOccupancy(CollapseGoState& state) {
   appendOccupancy(state,state.position.getRowMajorOccupancy());
 }
 
+CollapseGoApplyError CollapseGoReducer::simulatePlacement(
+  const CollapseGoState& committedState,
+  CollapseGoState& candidate,
+  int point,
+  Player actor,
+  const CollapseGoStoneSource& source,
+  vector<int>& capturedPoints
+) {
+  candidate.position.placeStone(point,actor,source);
+
+  CollapseGoTopology firstTopology = CollapseGoTopology::fullScan(
+    candidate.position,
+    candidate.getArmedImmortalAnchors(),
+    candidate.getArmedEightwaySources()
+  );
+  const Player opponent = getOpp(actor);
+  for(const CollapseGoGroup& group: firstTopology.getGroups()) {
+    if(group.color == opponent && group.liberties.empty() && !group.protectedByImmortal)
+      capturedPoints.insert(capturedPoints.end(),group.stones.begin(),group.stones.end());
+  }
+  sort(capturedPoints.begin(),capturedPoints.end());
+  capturedPoints.erase(unique(capturedPoints.begin(),capturedPoints.end()),capturedPoints.end());
+  markCapturedSpecialSources(candidate,candidate.position,capturedPoints);
+  candidate.position.removeStones(capturedPoints);
+
+  CollapseGoTopology secondTopology = CollapseGoTopology::fullScan(
+    candidate.position,
+    candidate.getArmedImmortalAnchors(),
+    candidate.getArmedEightwaySources()
+  );
+  const CollapseGoGroup& ownGroup = secondTopology.getGroupAt(point);
+  if(ownGroup.liberties.empty() && !ownGroup.protectedByImmortal)
+    return CollapseGoApplyError::SUICIDE;
+
+  PositionalSuperkoKey candidateKey(
+    candidate.position.getBoardSize(),
+    candidate.position.getRowMajorOccupancy()
+  );
+  if(committedState.getPositionalSuperkoHistory().contains(candidateKey))
+    return CollapseGoApplyError::POSITIONAL_SUPERKO;
+  return CollapseGoApplyError::NONE;
+}
+
 void CollapseGoReducer::markCapturedSpecialSources(
   CollapseGoState& state,
   const CollapseGoPosition& previousPosition,
@@ -205,8 +210,9 @@ void CollapseGoReducer::markCapturedSpecialSources(
     if(source.originKind == GameActionKind::NORMAL)
       continue;
     if((source.originKind != GameActionKind::IMMORTAL &&
-        source.originKind != GameActionKind::DOUBLE_START) || !source.specialLink.has_value())
-      throw StringError("Collapse Go captured special source is invalid for the N4 slice");
+        source.originKind != GameActionKind::DOUBLE_START &&
+        source.originKind != GameActionKind::EIGHTWAY) || !source.specialLink.has_value())
+      throw StringError("Collapse Go captured special source has an invalid kind or link");
 
     auto entryIterator = lower_bound(
       state.ledger.entries.begin(),
@@ -225,10 +231,11 @@ void CollapseGoReducer::markCapturedSpecialSources(
        entry.sourcePoint != point || entry.stoneState != CollapseGoLedgerStoneState::ON_BOARD)
       throw StringError("Collapse Go captured special source does not match its ledger lifecycle");
     entry.stoneState = CollapseGoLedgerStoneState::CAPTURED;
-    if(entry.originKind == GameActionKind::IMMORTAL) {
+    if(entry.originKind == GameActionKind::IMMORTAL ||
+       entry.originKind == GameActionKind::EIGHTWAY) {
       if(entry.abilityState != CollapseGoLedgerAbilityState::ARMED &&
          entry.abilityState != CollapseGoLedgerAbilityState::INACTIVE)
-        throw StringError("Collapse Go captured Immortal source has an invalid ability state");
+        throw StringError("Collapse Go captured armed-special source has an invalid ability state");
       entry.abilityState = CollapseGoLedgerAbilityState::INACTIVE;
       entry.tombstone = true;
     }
@@ -259,10 +266,11 @@ void CollapseGoReducer::completeLedgerSettlement(
         throw StringError("Collapse Go Double settlement encountered an inconsistent ledger entry");
       entry.abilityState = CollapseGoLedgerAbilityState::INACTIVE;
     }
-    else if(entry.originKind == GameActionKind::IMMORTAL) {
+    else if(entry.originKind == GameActionKind::IMMORTAL ||
+            entry.originKind == GameActionKind::EIGHTWAY) {
       if(entry.abilityState == CollapseGoLedgerAbilityState::ARMED) {
         if(entry.stoneState != CollapseGoLedgerStoneState::ON_BOARD || entry.tombstone)
-          throw StringError("Collapse Go live Immortal settlement source is inconsistent");
+          throw StringError("Collapse Go live armed-special settlement source is inconsistent");
         entry.abilityState = CollapseGoLedgerAbilityState::INACTIVE;
         entry.tombstone = true;
         step.noOp = false;
@@ -270,17 +278,18 @@ void CollapseGoReducer::completeLedgerSettlement(
       }
       else if(entry.abilityState != CollapseGoLedgerAbilityState::INACTIVE ||
               entry.stoneState != CollapseGoLedgerStoneState::CAPTURED || !entry.tombstone)
-        throw StringError("Collapse Go Immortal tombstone settlement source is inconsistent");
+        throw StringError("Collapse Go armed-special tombstone settlement source is inconsistent");
     }
     else
-      throw StringError("Collapse Go N4 settlement encountered an unsupported ledger kind");
+      throw StringError("Collapse Go settlement encountered an unsupported ledger kind");
     entry.settlementState = CollapseGoLedgerSettlementState::SETTLED;
     state.settledLedgerCount++;
 
     while(true) {
       vector<int> armedImmortalAnchors = state.getArmedImmortalAnchors();
-      CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
-        state.position,armedImmortalAnchors
+      vector<int> armedEightwaySources = state.getArmedEightwaySources();
+      CollapseGoTopology topology = CollapseGoTopology::fullScan(
+        state.position,armedImmortalAnchors,armedEightwaySources
       );
       vector<int> blackRemoved;
       vector<int> whiteRemoved;
@@ -311,7 +320,9 @@ void CollapseGoReducer::completeLedgerSettlement(
       step.removalBatches.push_back(move(batch));
     }
 
-    CollapseGoTopology::fullScanN4(state.position,state.getArmedImmortalAnchors());
+    CollapseGoTopology::fullScan(
+      state.position,state.getArmedImmortalAnchors(),state.getArmedEightwaySources()
+    );
     step.stableOccupancy = state.position.getRowMajorOccupancy();
     state.logPosition++;
     appendOccupancy(state,step.stableOccupancy);
@@ -439,8 +450,6 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
       return reject(CollapseGoApplyError::QUOTA_EXHAUSTED);
     if(!state.position.isEmpty(point))
       return reject(CollapseGoApplyError::POINT_OCCUPIED);
-    if(kind == GameActionKind::EIGHTWAY)
-      return reject(CollapseGoApplyError::UNSUPPORTED_BY_SLICE);
 
     CollapseGoState candidate(state);
     vector<int> capturedPoints;
@@ -450,12 +459,11 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
       specialLink,originActionNumber,actor,kind,point
     ));
     CollapseGoStoneSource source(originActionNumber,kind,specialLink);
-    CollapseGoApplyError simulationError = simulateN4Placement(
-      state,candidate.getArmedImmortalAnchors(),point,actor,source,candidate.position,capturedPoints
+    CollapseGoApplyError simulationError = simulatePlacement(
+      state,candidate,point,actor,source,capturedPoints
     );
     if(simulationError != CollapseGoApplyError::NONE)
       return reject(simulationError);
-    markCapturedSpecialSources(candidate,state.position,capturedPoints);
 
     CollapseGoQuotas& remaining = actor == P_BLACK ? candidate.blackRemainingQuotas : candidate.whiteRemainingQuotas;
     CollapseGoQuotas& used = actor == P_BLACK ? candidate.blackUsedQuotas : candidate.whiteUsedQuotas;
@@ -464,10 +472,15 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
       used.immortal++;
       candidate.actor = getOpp(actor);
     }
-    else {
+    else if(kind == GameActionKind::DOUBLE_START) {
       remaining.doubleMove--;
       used.doubleMove++;
       candidate.pendingDouble = CollapseGoPendingDouble(actor,specialLink,originActionNumber);
+    }
+    else {
+      remaining.eightway--;
+      used.eightway++;
+      candidate.actor = getOpp(actor);
     }
     candidate.atomicActionCount++;
     candidate.revision++;
@@ -480,6 +493,8 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     result.error = CollapseGoApplyError::NONE;
     result.positionalSuperkoAppends = 1;
     result.capturedStones = rowMajorPointsToLocs(candidate.position,capturedPoints);
+    if(candidate.atomicActionCount == candidate.config.getThreshold())
+      result.atomicStateSnapshot = candidate;
 
     completeSettlementIfTriggered(candidate,result);
 
@@ -505,8 +520,15 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     result.error = CollapseGoApplyError::NONE;
     result.positionalSuperkoAppends = 1;
 
+    const bool settlementWillTrigger = candidate.phase == CollapseGoPhase::COLLAPSE_PLAY &&
+      (candidate.atomicActionCount == candidate.config.getThreshold() ||
+       (candidate.atomicActionCount < candidate.config.getThreshold() && candidate.consecutivePasses == 2));
+    if(settlementWillTrigger)
+      result.atomicStateSnapshot = candidate;
     completeSettlementIfTriggered(candidate,result);
     if(candidate.phase == CollapseGoPhase::ORDINARY_PLAY && candidate.consecutivePasses == 2) {
+      if(!result.atomicStateSnapshot.has_value())
+        result.atomicStateSnapshot = candidate;
       candidate.score = scoreChineseArea(candidate.position);
       candidate.phase = CollapseGoPhase::TERMINAL;
       candidate.actor = C_EMPTY;
@@ -530,12 +552,11 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
   CollapseGoState candidate(state);
   vector<int> capturedPoints;
   CollapseGoStoneSource source(state.atomicActionCount + 1,GameActionKind::NORMAL,nullopt);
-  CollapseGoApplyError simulationError = simulateN4Placement(
-    state,candidate.getArmedImmortalAnchors(),point,actor,source,candidate.position,capturedPoints
+  CollapseGoApplyError simulationError = simulatePlacement(
+    state,candidate,point,actor,source,capturedPoints
   );
   if(simulationError != CollapseGoApplyError::NONE)
     return reject(simulationError);
-  markCapturedSpecialSources(candidate,state.position,capturedPoints);
 
   CollapseGoApplyResult result;
   result.accepted = true;
@@ -552,6 +573,8 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     candidate.pendingDouble.reset();
   candidate.actor = getOpp(actor);
   appendCurrentOccupancy(candidate);
+  if(candidate.atomicActionCount == candidate.config.getThreshold())
+    result.atomicStateSnapshot = candidate;
 
   completeSettlementIfTriggered(candidate,result);
 

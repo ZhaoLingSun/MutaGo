@@ -20,6 +20,10 @@ CollapseGoStoneSource immortalSource(int64_t actionNumber) {
   return CollapseGoStoneSource(actionNumber,GameActionKind::IMMORTAL,actionNumber);
 }
 
+CollapseGoStoneSource eightwaySource(int64_t actionNumber) {
+  return CollapseGoStoneSource(actionNumber,GameActionKind::EIGHTWAY,actionNumber);
+}
+
 void expectStringError(const function<void()>& operation) {
   try {
     operation();
@@ -324,6 +328,171 @@ void Tests::runCollapseTopologyTests() {
     testAssert(splitTopology.getGroups().size() == 2);
     testAssert(splitTopology.getGroupAt(10).protectedByImmortal);
     testAssert(!splitTopology.getGroupAt(12).protectedByImmortal);
+  }
+
+  // Mixed N4/N8 scans bind undirected diagonal edges, deduplicated liberties, and propagated protection.
+  {
+    CollapseGoPosition mixed(9);
+    placeExact(mixed,0,0,P_BLACK,1);
+    placeExact(mixed,1,1,P_BLACK,2);
+    mixed.placeStone(2,3,P_BLACK,immortalSource(3));
+    placeExact(mixed,3,3,P_BLACK,4);
+    mixed.placeStone(4,4,P_BLACK,eightwaySource(5));
+
+    CollapseGoTopology armed = CollapseGoTopology::fullScan(
+      mixed,vector<int>({29}),vector<int>({40})
+    );
+    testAssert(armed.getGroups().size() == 3);
+    testAssert(armed.getGroups()[0].stones == vector<int>({0}));
+    testAssert(armed.getGroups()[0].liberties == vector<int>({1,9}));
+    testAssert(!armed.getGroups()[0].protectedByImmortal);
+    testAssert(armed.getGroups()[1].stones == vector<int>({10}));
+    testAssert(armed.getGroups()[1].liberties == vector<int>({1,9,11,19}));
+    testAssert(!armed.getGroups()[1].protectedByImmortal);
+    testAssert(armed.getGroups()[2].stones == vector<int>({29,30,40}));
+    testAssert(armed.getGroups()[2].liberties == vector<int>({20,21,28,31,32,38,39,41,48,49,50}));
+    testAssert(armed.getGroups()[2].protectedByImmortal);
+    testAssert(find(
+      armed.getGroups()[2].liberties.begin(),armed.getGroups()[2].liberties.end(),22
+    ) == armed.getGroups()[2].liberties.end());
+
+    for(int symmetry = 0; symmetry < 8; symmetry++) {
+      CollapseGoPosition transformed = transformedPosition(mixed,symmetry);
+      CollapseGoTopology transformedTopology = CollapseGoTopology::fullScan(
+        transformed,
+        vector<int>({transformPoint(9,29,symmetry)}),
+        vector<int>({transformPoint(9,40,symmetry)})
+      );
+      testAssert(transformedTopology.getGroups() == transformedGroups(
+        armed.getGroups(),9,symmetry
+      ));
+    }
+
+    CollapseGoTopology inactive = CollapseGoTopology::fullScan(
+      mixed,vector<int>(),vector<int>()
+    );
+    testAssert(inactive.getGroups().size() == 4);
+    testAssert(inactive.getGroupAt(29).stones == vector<int>({29,30}));
+    testAssert(inactive.getGroupAt(29).liberties == vector<int>({20,21,28,31,38,39}));
+    testAssert(!inactive.getGroupAt(29).protectedByImmortal);
+    testAssert(inactive.getGroupAt(40).stones == vector<int>({40}));
+    testAssert(inactive.getGroupAt(40).liberties == vector<int>({31,39,41,49}));
+    testAssert(!inactive.getGroupAt(40).protectedByImmortal);
+  }
+
+  // Either endpoint may supply the symmetric diagonal edge, and occupied shoulders never block it.
+  {
+    CollapseGoPosition leftAnchored(9);
+    leftAnchored.placeStone(2,2,P_BLACK,eightwaySource(1));
+    placeExact(leftAnchored,3,3,P_BLACK,2);
+    placeExact(leftAnchored,3,2,P_WHITE,3);
+    placeExact(leftAnchored,2,3,P_WHITE,4);
+    CollapseGoTopology leftTopology = CollapseGoTopology::fullScan(
+      leftAnchored,vector<int>(),vector<int>({20})
+    );
+    testAssert(leftTopology.getGroupAt(20).stones == vector<int>({20,30}));
+    testAssert(leftTopology.getGroupAt(30) == leftTopology.getGroupAt(20));
+
+    CollapseGoPosition rightAnchored(9);
+    placeExact(rightAnchored,2,2,P_BLACK,1);
+    rightAnchored.placeStone(3,3,P_BLACK,eightwaySource(2));
+    placeExact(rightAnchored,3,2,P_WHITE,3);
+    placeExact(rightAnchored,2,3,P_WHITE,4);
+    CollapseGoTopology rightTopology = CollapseGoTopology::fullScan(
+      rightAnchored,vector<int>(),vector<int>({30})
+    );
+    testAssert(rightTopology.getGroupAt(20).stones == vector<int>({20,30}));
+    testAssert(rightTopology.getGroupAt(30) == rightTopology.getGroupAt(20));
+
+    CollapseGoTopology noAnchor = CollapseGoTopology::fullScan(
+      leftAnchored,vector<int>(),vector<int>()
+    );
+    testAssert(noAnchor.getGroupAt(20).stones == vector<int>({20}));
+    testAssert(noAnchor.getGroupAt(30).stones == vector<int>({30}));
+
+    CollapseGoPosition enemyDiagonal(9);
+    enemyDiagonal.placeStone(2,2,P_BLACK,eightwaySource(1));
+    placeExact(enemyDiagonal,3,3,P_WHITE,2);
+    CollapseGoTopology enemyTopology = CollapseGoTopology::fullScan(
+      enemyDiagonal,vector<int>(),vector<int>({20})
+    );
+    testAssert(enemyTopology.getGroupAt(20).stones == vector<int>({20}));
+    testAssert(enemyTopology.getGroupAt(30).stones == vector<int>({30}));
+  }
+
+  // Only the armed source contributes N8 liberties, and the union is strictly sorted and deduplicated.
+  {
+    CollapseGoPosition n8Only(9);
+    n8Only.placeStone(2,2,P_BLACK,eightwaySource(1));
+    int64_t actionNumber = 2;
+    for(int point: {11,12,19,21,28,29,30})
+      n8Only.placeStone(point,P_WHITE,normalSource(actionNumber++));
+    CollapseGoTopology armed = CollapseGoTopology::fullScan(
+      n8Only,vector<int>(),vector<int>({20})
+    );
+    testAssert(armed.getGroupAt(20).liberties == vector<int>({10}));
+    CollapseGoTopology inactive = CollapseGoTopology::fullScanN4(n8Only);
+    testAssert(inactive.getGroupAt(20).liberties.empty());
+
+    CollapseGoPosition duplicateLiberties(9);
+    duplicateLiberties.placeStone(2,2,P_BLACK,eightwaySource(1));
+    placeExact(duplicateLiberties,2,3,P_BLACK,2);
+    CollapseGoTopology duplicateTopology = CollapseGoTopology::fullScan(
+      duplicateLiberties,vector<int>(),vector<int>({20})
+    );
+    testAssert(duplicateTopology.getGroupAt(20).stones == vector<int>({20,29}));
+    testAssert(duplicateTopology.getGroupAt(20).liberties == vector<int>({10,11,12,19,21,28,30,38}));
+  }
+
+  // Corner and edge anchors enumerate exactly their clipped N8 interfaces without row wrapping.
+  {
+    CollapseGoPosition corner(9);
+    corner.placeStone(0,0,P_BLACK,eightwaySource(1));
+    CollapseGoTopology cornerArmed = CollapseGoTopology::fullScan(
+      corner,vector<int>(),vector<int>({0})
+    );
+    testAssert(cornerArmed.getGroupAt(0).liberties == vector<int>({1,9,10}));
+    testAssert(CollapseGoTopology::fullScanN4(corner).getGroupAt(0).liberties ==
+      vector<int>({1,9}));
+
+    CollapseGoPosition edge(9);
+    edge.placeStone(1,0,P_BLACK,eightwaySource(1));
+    CollapseGoTopology edgeArmed = CollapseGoTopology::fullScan(
+      edge,vector<int>(),vector<int>({1})
+    );
+    testAssert(edgeArmed.getGroupAt(1).liberties == vector<int>({0,2,9,10,11}));
+    testAssert(CollapseGoTopology::fullScanN4(edge).getGroupAt(1).liberties ==
+      vector<int>({0,2,10}));
+  }
+
+  // Mixed protection crosses an Eightway edge only while that source remains armed.
+  {
+    CollapseGoPosition protectedDiagonal(9);
+    protectedDiagonal.placeStone(2,2,P_BLACK,immortalSource(1));
+    protectedDiagonal.placeStone(3,3,P_BLACK,eightwaySource(2));
+    CollapseGoTopology armed = CollapseGoTopology::fullScan(
+      protectedDiagonal,vector<int>({20}),vector<int>({30})
+    );
+    testAssert(armed.getGroupAt(20).stones == vector<int>({20,30}));
+    testAssert(armed.getGroupAt(30).protectedByImmortal);
+
+    CollapseGoTopology split = CollapseGoTopology::fullScan(
+      protectedDiagonal,vector<int>({20}),vector<int>()
+    );
+    testAssert(split.getGroupAt(20).stones == vector<int>({20}));
+    testAssert(split.getGroupAt(20).protectedByImmortal);
+    testAssert(split.getGroupAt(30).stones == vector<int>({30}));
+    testAssert(!split.getGroupAt(30).protectedByImmortal);
+
+    expectStringError([&]() {
+      CollapseGoTopology::fullScan(protectedDiagonal,vector<int>({20}),vector<int>({30,30}));
+    });
+    expectStringError([&]() {
+      CollapseGoTopology::fullScan(protectedDiagonal,vector<int>({20}),vector<int>({81}));
+    });
+    expectStringError([&]() {
+      CollapseGoTopology::fullScan(protectedDiagonal,vector<int>({20}),vector<int>({20}));
+    });
   }
 
   // Zero-liberty protection and malformed anchor lists are explicit topology invariants.

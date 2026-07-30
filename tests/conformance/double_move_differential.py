@@ -803,16 +803,17 @@ def _apply_v1_adapter(
     except UnsupportedSliceAction:
         return None
     kind = decode_action_v1(action, state.config.board_size).kind
-    immortal_mechanics_reached = kind is ActionKind.IMMORTAL and (
+    armed_mechanics_reached = kind in (
+        ActionKind.IMMORTAL,
+        ActionKind.EIGHTWAY,
+    ) and (
         transition.accepted
         or (
             transition.rejection_code is not None
             and transition.rejection_code.value in ("SUICIDE", "POSITIONAL_SUPERKO")
         )
     )
-    if immortal_mechanics_reached or (
-        transition.accepted and kind is ActionKind.EIGHTWAY
-    ):
+    if armed_mechanics_reached:
         return None
     return transition
 

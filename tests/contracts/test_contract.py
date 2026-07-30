@@ -460,6 +460,10 @@ class FixtureAndMismatchInvariantTests(unittest.TestCase):
         cls.digest = validate_descriptor(load_json(DESCRIPTOR_PATH), cls.catalog)
         cls.fixture = load_json(EXAMPLE_DIR / "conformance-fixture-v1.example.json")
         cls.double_fixture = load_json(EXAMPLE_DIR / "conformance-fixture-double-settlement-v1.example.json")
+        cls.eightway_fixture = load_json(
+            EXAMPLE_DIR
+            / "conformance-fixture-eightway-immortal-split-v1.example.json"
+        )
         cls.immortal_fixture = load_json(
             EXAMPLE_DIR
             / "conformance-fixture-immortal-true-eye-settlement-v1.example.json"
@@ -735,6 +739,124 @@ class FixtureAndMismatchInvariantTests(unittest.TestCase):
             state["expiredQuotas"],
         )
         _validate_fixture(fixture, self.catalog, self.digest)
+
+    def test_official_eightway_fixture_binds_mixed_split_and_reverse_pop(self) -> None:
+        fixture = self.eightway_fixture
+        self.assertIsNone(fixture["descriptor"])
+        self.assertEqual("contract-eightway-immortal-split", fixture["fixtureId"])
+        self.assertEqual(
+            [521, 161, 342, 179, 1263, 181, 360, 199, 1444, 1444],
+            [step["candidate"]["action"]["actionId"] for step in fixture["steps"]],
+        )
+
+        placed = fixture["steps"][4]["expectedProjection"]
+        mixed = next(group for group in placed["debug"]["groups"] if 180 in group["stones"])
+        self.assertEqual([160, 180], mixed["stones"])
+        self.assertEqual([160], mixed["immortalAnchors"])
+        self.assertEqual([180], mixed["eightwayAnchors"])
+        self.assertTrue(mixed["protected"])
+
+        final = fixture["steps"][9]["expectedProjection"]
+        atomic = final["transition"]["atomicEvent"]
+        self.assertEqual((10, 10), (atomic["actionNumber"], atomic["pskHistoryIndex"]))
+        self.assertIn(180, atomic["stableOccupancy"]["black"])
+        settlement = final["transition"]["settlement"]
+        self.assertEqual("BLACK", settlement["handoffActor"])
+        self.assertEqual(
+            ["special-5", "special-1"],
+            [step["ledgerEventId"] for step in settlement["steps"]],
+        )
+        first, second = settlement["steps"]
+        self.assertTrue(first["abilityDeactivated"])
+        self.assertFalse(first["noOp"])
+        self.assertEqual([{"black": [180], "white": []}], first["removalBatches"])
+        self.assertNotIn(180, first["stableOccupancy"]["black"])
+        self.assertTrue(second["abilityDeactivated"])
+        self.assertFalse(second["noOp"])
+        self.assertEqual([], second["removalBatches"])
+        self.assertEqual(first["stableOccupancy"], second["stableOccupancy"])
+
+        state = final["state"]
+        self.assertEqual((10, 10, 12), (
+            state["atomicActionCount"], state["revision"], state["logPosition"]
+        ))
+        self.assertEqual(13, len(state["pskHistory"]))
+        self.assertEqual(("BLACK", "ORDINARY_PLAY"), (state["actor"], state["phase"]))
+        self.assertEqual(["IMMORTAL", "EIGHTWAY"], [entry["kind"] for entry in state["ledger"]])
+        self.assertEqual(
+            [("ON_BOARD", "INACTIVE", True), ("CAPTURED", "INACTIVE", True)],
+            [
+                (entry["stoneState"], entry["abilityState"], entry["tombstone"])
+                for entry in state["ledger"]
+            ],
+        )
+        self.assertEqual(
+            {"IMMORTAL": 1, "DOUBLE_START": 0, "EIGHTWAY": 1},
+            state["usedQuotas"]["BLACK"],
+        )
+        _validate_fixture(fixture, self.catalog, self.digest)
+
+    def test_eightway_fixture_rejects_topology_lifecycle_settlement_and_psk_drift(self) -> None:
+        mutations = []
+
+        missing_eightway_anchor = copy.deepcopy(self.eightway_fixture)
+        group = next(
+            item
+            for item in missing_eightway_anchor["steps"][4]["expectedProjection"]["debug"]["groups"]
+            if 180 in item["stones"]
+        )
+        group["eightwayAnchors"] = []
+        mutations.append(("missing-eightway-anchor", missing_eightway_anchor))
+
+        lost_protection = copy.deepcopy(self.eightway_fixture)
+        group = next(
+            item
+            for item in lost_protection["steps"][7]["expectedProjection"]["debug"]["groups"]
+            if 180 in item["stones"]
+        )
+        group["protected"] = False
+        mutations.append(("lost-immortal-propagation", lost_protection))
+
+        atomic_drift = copy.deepcopy(self.eightway_fixture)
+        atomic_drift["steps"][9]["expectedProjection"]["transition"]["atomicEvent"][
+            "stableOccupancy"
+        ]["black"].remove(180)
+        mutations.append(("atomic-before-settlement-drift", atomic_drift))
+
+        wrong_batch = copy.deepcopy(self.eightway_fixture)
+        wrong_batch["steps"][9]["expectedProjection"]["transition"]["settlement"][
+            "steps"
+        ][0]["removalBatches"][0]["black"] = [160]
+        mutations.append(("wrong-split-removal", wrong_batch))
+
+        wrong_order = copy.deepcopy(self.eightway_fixture)
+        wrong_order["steps"][9]["expectedProjection"]["transition"]["settlement"][
+            "steps"
+        ].reverse()
+        mutations.append(("wrong-global-pop-order", wrong_order))
+
+        source_drift = copy.deepcopy(self.eightway_fixture)
+        source_drift["steps"][9]["expectedProjection"]["state"]["ledger"][1][
+            "sourcePoint"
+        ] = 181
+        mutations.append(("ledger-source-drift", source_drift))
+
+        quota_drift = copy.deepcopy(self.eightway_fixture)
+        quota_drift["steps"][9]["expectedProjection"]["state"]["usedQuotas"]["BLACK"][
+            "EIGHTWAY"
+        ] = 0
+        mutations.append(("quota-ledger-drift", quota_drift))
+
+        psk_drift = copy.deepcopy(self.eightway_fixture)
+        psk_drift["steps"][9]["expectedProjection"]["state"]["pskHistory"][-1][
+            "black"
+        ].append(180)
+        mutations.append(("stable-psk-drift", psk_drift))
+
+        for label, broken in mutations:
+            with self.subTest(label=label), self.assertRaises(ContractError) as caught:
+                _validate_fixture(broken, self.catalog, self.digest)
+            self.assertEqual("semantic-invariant", caught.exception.code)
 
     def _nonpublic_initial_fixture(
         self,

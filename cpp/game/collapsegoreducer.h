@@ -1,11 +1,14 @@
 #ifndef GAME_COLLAPSEGOREDUCER_H_
 #define GAME_COLLAPSEGOREDUCER_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "../game/collapsegostate.h"
 #include "../game/gameaction.h"
+
+class CollapseGoReducerTestAccess;
 
 enum class CollapseGoApplyError {
   NONE,
@@ -54,6 +57,7 @@ struct CollapseGoApplyResult {
   bool accepted;
   CollapseGoApplyError error;
   std::vector<Loc> capturedStones;
+  std::optional<CollapseGoState> atomicStateSnapshot;
   std::vector<CollapseGoSettlementStep> settlementSteps;
   bool settlementTriggered;
   CollapseGoSettlementReason settlementReason;
@@ -76,6 +80,14 @@ private:
   static CollapseGoAbility abilityForAction(GameActionKind kind);
   static void appendOccupancy(CollapseGoState& state, const std::vector<uint8_t>& occupancy);
   static void appendCurrentOccupancy(CollapseGoState& state);
+  static CollapseGoApplyError simulatePlacement(
+    const CollapseGoState& committedState,
+    CollapseGoState& candidate,
+    int point,
+    Player actor,
+    const CollapseGoStoneSource& source,
+    std::vector<int>& capturedPoints
+  );
   static void markCapturedSpecialSources(
     CollapseGoState& state,
     const CollapseGoPosition& previousPosition,
@@ -88,6 +100,8 @@ private:
   );
   static void completeSettlementIfTriggered(CollapseGoState& state, CollapseGoApplyResult& result);
   static CollapseGoScore scoreChineseArea(const CollapseGoPosition& position);
+
+  friend class CollapseGoReducerTestAccess;
 };
 
 #endif // GAME_COLLAPSEGOREDUCER_H_

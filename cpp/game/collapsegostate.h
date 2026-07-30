@@ -173,6 +173,7 @@ public:
   int64_t getExpiredQuota(Player pla, CollapseGoAbility ability) const;
   const CollapseGoLedger& getLedger() const;
   std::vector<int> getArmedImmortalAnchors() const;
+  std::vector<int> getArmedEightwaySources() const;
   const std::optional<CollapseGoPendingDouble>& getPendingDouble() const;
   int64_t getRevision() const;
   int64_t getLogPosition() const;

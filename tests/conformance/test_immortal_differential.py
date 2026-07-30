@@ -58,6 +58,38 @@ PINNED_IMMORTAL_DEFAULT_SUMMARY = {
 PINNED_IMMORTAL_DEFAULT_DIGEST = PINNED_IMMORTAL_DEFAULT_SUMMARY["sha256"]
 
 
+def _legacy_eightway_boundary_requests(prefix: str) -> list[dict[str, object]]:
+    suicide = diff.EpisodeBuilder(f"{prefix}-eightway-suicide", 9)
+    black_fillers = ((0, 0), (2, 0), (4, 0), (6, 0), (8, 0), (0, 2), (2, 2), (8, 2))
+    white_ring = ((3, 3), (4, 3), (5, 3), (3, 4), (5, 4), (3, 5), (4, 5), (5, 5))
+    for black_point, white_point in zip(black_fillers, white_ring):
+        suicide.add(diff.Color.BLACK, diff.board_action_v1(9, *black_point))
+        suicide.add(diff.Color.WHITE, diff.board_action_v1(9, *white_point))
+    suicide.add(
+        diff.Color.BLACK,
+        diff.board_action_v1(9, 4, 4, diff.ActionKind.EIGHTWAY),
+    )
+
+    psk = diff.EpisodeBuilder(f"{prefix}-eightway-psk", 9)
+    for actor, x, y in (
+        (diff.Color.BLACK, 1, 2),
+        (diff.Color.WHITE, 1, 1),
+        (diff.Color.BLACK, 3, 2),
+        (diff.Color.WHITE, 3, 1),
+        (diff.Color.BLACK, 2, 3),
+        (diff.Color.WHITE, 2, 0),
+        (diff.Color.BLACK, 8, 8),
+        (diff.Color.WHITE, 2, 2),
+        (diff.Color.BLACK, 2, 1),
+    ):
+        psk.add(actor, diff.board_action_v1(9, x, y))
+    psk.add(
+        diff.Color.WHITE,
+        diff.board_action_v1(9, 2, 2, diff.ActionKind.EIGHTWAY),
+    )
+    return [suicide.request(), psk.request()]
+
+
 class ContractFixtureBindingTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -221,6 +253,17 @@ class CuratedCoverageTests(unittest.TestCase):
                 if observation["transition"]["status"] != "ACCEPTED":
                     self.assertEqual(previous, observation["state"])
                 previous = observation["state"]
+
+    def test_eightway_suicide_and_psk_keep_v2_unsupported_boundary(self) -> None:
+        for request in _legacy_eightway_boundary_requests("python-v2"):
+            response = diff.oracle_episode_response(request)
+            previous, observation = response["observations"][-2:]
+            with self.subTest(episode=request["episodeId"]):
+                self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
+                self.assertEqual(
+                    "UNSUPPORTED_BY_SLICE", observation["transition"]["errorCode"]
+                )
+                self.assertEqual(previous["state"], observation["state"])
 
     def test_action_t_and_two_pass_settlement_are_both_present(self) -> None:
         action_t = self.responses["curated-action-t-immortal-9"]["observations"][-1]
@@ -816,6 +859,28 @@ class ExecutableIntegrationTests(unittest.TestCase):
         observation = actual[0]["observations"][0]
         self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
         self.assertEqual(actual[0]["initialState"], observation["state"])
+
+    def test_cpp_maps_eightway_suicide_and_psk_to_v2_unsupported(self) -> None:
+        requests = _legacy_eightway_boundary_requests("cpp-v2")
+        expected = [diff.oracle_episode_response(request) for request in requests]
+        actual, _ = diff.run_probe_requests(
+            self.probe,
+            requests,
+            expected,
+            manifest={
+                "generatorVersion": diff.GENERATOR_VERSION,
+                "protocolVersion": diff.PROTOCOL_VERSION,
+                "randomCandidateCount": 0,
+                "seed": "cpp-v2-eightway-mechanics-boundary",
+            },
+            deadline=diff.hardened._new_deadline(10),
+        )
+        for request, left, right in zip(requests, expected, actual):
+            with self.subTest(episode=request["episodeId"]):
+                self.assertEqual(left, right)
+                previous, observation = right["observations"][-2:]
+                self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
+                self.assertEqual(previous["state"], observation["state"])
 
     def test_v2_malformed_request_fails_closed_without_partial_output(self) -> None:
         request = diff.true_eye_settlement_request(9, "integration-v2-malformed")

@@ -1,12 +1,9 @@
-"""Independent stdlib-only Collapse Go NORMAL/PASS/Immortal/Double oracle.
+"""Independent stdlib-only Collapse Go reference oracle.
 
-This module implements source-aware immutable NORMAL, PASS, Immortal, and
-frozen Double-Move semantics, including dynamic N4 Immortal protection, the
-forced same-owner Double continuation, ordered occupancy-only PSK
-transactions, quota/event accounting, and newest-first settlement. Eightway
-remains outside this increment: it receives only rejections that can be
-decided before its ability mechanics are needed, and a potentially legal
-attempt raises :class:`UnsupportedSliceAction`.
+This module implements source-aware immutable NORMAL, PASS, Immortal,
+Double-Move, and Eightway semantics. It uses direct mixed-connectivity scans,
+ordered occupancy-only PSK transactions, exact special-source lifecycles, and
+global newest-first settlement to a deterministic fixed point.
 
 The oracle does not import KataGo's Python game helpers, the executable
 contract implementation, C++, subprocess/FFI bridges, or numerical frameworks.
@@ -90,19 +87,23 @@ class SettlementState(str, Enum):
     SETTLED = "SETTLED"
 
 
+_ARMED_ABILITY_KINDS = frozenset((ActionKind.IMMORTAL, ActionKind.EIGHTWAY))
+_SPECIAL_KINDS = frozenset((*_ARMED_ABILITY_KINDS, ActionKind.DOUBLE_START))
+
+
 class ActionV1DecodeError(ValueError):
     """Raised when a value is not the closed canonical Action V1 envelope."""
 
 
 class UnsupportedSliceAction(RuntimeError):
-    """A potentially legal special action outside this oracle slice."""
+    """Legacy compatibility exception retained for older slice callers."""
 
     def __init__(self, action: "DecodedAction", actor: Color) -> None:
         self.action = action
         self.actor = actor
         super().__init__(
             f"{action.kind.value} action {action.action_id} for {actor.value} "
-            "requires special-ability semantics outside this oracle increment"
+            "is not supported by the requested compatibility slice"
         )
 
 
@@ -528,11 +529,7 @@ class SpecialEvent:
             raise TypeError("special event owner must be Color")
         if not isinstance(self.kind, ActionKind):
             raise TypeError("special event kind must be ActionKind")
-        if self.kind not in (
-            ActionKind.IMMORTAL,
-            ActionKind.DOUBLE_START,
-            ActionKind.EIGHTWAY,
-        ):
+        if self.kind not in _SPECIAL_KINDS:
             raise ValueError("special event kind must be a special point action")
         if type(self.source_point) is not int or not (
             0 <= self.source_point < CANVAS_POINT_COUNT
@@ -546,6 +543,51 @@ class SpecialEvent:
             raise TypeError("settlement_state must be SettlementState")
         if type(self.tombstone) is not bool:
             raise TypeError("special event tombstone must be bool")
+
+        if self.kind is ActionKind.IMMORTAL:
+            if self.settlement_state is SettlementState.PENDING:
+                if (
+                    self.ability_state is not AbilityState.ARMED
+                    or self.stone_state is not StoneState.ON_BOARD
+                    or self.tombstone
+                ):
+                    raise ValueError(
+                        "pending Immortal must be armed, on board, and non-tombstone"
+                    )
+            elif (
+                self.ability_state is not AbilityState.INACTIVE
+                or not self.tombstone
+            ):
+                raise ValueError(
+                    "settled Immortal must be inactive and tombstoned"
+                )
+        elif self.kind is ActionKind.EIGHTWAY:
+            if (
+                self.settlement_state is SettlementState.PENDING
+                and self.stone_state is StoneState.ON_BOARD
+            ):
+                if self.ability_state is not AbilityState.ARMED or self.tombstone:
+                    raise ValueError(
+                        "pending on-board Eightway must be armed and non-tombstone"
+                    )
+            elif (
+                self.ability_state is not AbilityState.INACTIVE
+                or not self.tombstone
+            ):
+                raise ValueError(
+                    "captured or settled Eightway must be inactive and tombstoned"
+                )
+        else:
+            expected_ability = (
+                AbilityState.CONSUMED
+                if self.settlement_state is SettlementState.PENDING
+                else AbilityState.INACTIVE
+            )
+            if self.ability_state is not expected_ability or not self.tombstone:
+                raise ValueError(
+                    "Double event lifecycle must match its settlement state and "
+                    "remain tombstoned"
+                )
 
     @property
     def origin_action_number(self) -> int:
@@ -787,8 +829,10 @@ class SettlementStepEvent:
             raise TypeError("settlement step owner must be Color")
         if not isinstance(self.kind, ActionKind):
             raise TypeError("settlement step kind must be ActionKind")
-        if self.kind not in (ActionKind.IMMORTAL, ActionKind.DOUBLE_START):
-            raise ValueError("settlement steps must reference Immortal or Double events")
+        if self.kind not in _SPECIAL_KINDS:
+            raise ValueError(
+                "settlement steps must reference Immortal, Double, or Eightway events"
+            )
         if type(self.ability_deactivated) is not bool or type(self.no_op) is not bool:
             raise TypeError("settlement step disposition flags must be bool")
         if not isinstance(self.removal_batches, tuple) or any(
@@ -857,6 +901,20 @@ class SettlementResult:
             raise ValueError("settlement step count must match ledger_entry_count")
         if self.psk_appends != self.ledger_entry_count:
             raise ValueError("each settlement ledger entry must append one PSK state")
+        for previous, current in zip(self.steps, self.steps[1:]):
+            if previous.logical_order <= current.logical_order:
+                raise ValueError(
+                    "settlement steps must be strictly newest-to-oldest"
+                )
+            if (
+                current.revision != previous.revision
+                or current.log_position != previous.log_position + 1
+                or current.psk_history_index
+                != previous.psk_history_index + 1
+            ):
+                raise ValueError(
+                    "settlement step positions must be consecutive at one revision"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -981,7 +1039,7 @@ class OracleState:
             self.expired_quotas,
         )
 
-        for group in scan_n4_groups(self.board, self.ledger):
+        for group in scan_mixed_groups(self.board, self.ledger):
             if not group.liberties and not group.protected:
                 raise ValueError(
                     "stable states cannot contain an unprotected zero-liberty group"
@@ -1001,7 +1059,7 @@ class OracleState:
                 if point >= self.board.size * self.board.size:
                     raise ValueError("PSK history contains an off-board point")
 
-        self._validate_immortal_double_slice()
+        self._validate_special_state()
 
         if self.phase is Phase.COLLAPSE_PLAY:
             if self.actor is None or self.terminal is not None:
@@ -1050,7 +1108,7 @@ class OracleState:
                 "settled ledger events, and stable terminal events"
             )
 
-    def _validate_immortal_double_slice(self) -> None:
+    def _validate_special_state(self) -> None:
         board_by_source: dict[str, Stone] = {}
         special_source_ids: set[str] = set()
         for stone in self.board.stones:
@@ -1059,30 +1117,25 @@ class OracleState:
             if stone.origin_kind is ActionKind.NORMAL:
                 if stone.special_event_id is not None:
                     raise ValueError("NORMAL stone source cannot link to an event")
-            elif stone.origin_kind in (
-                ActionKind.IMMORTAL,
-                ActionKind.DOUBLE_START,
-            ):
+            elif stone.origin_kind in _SPECIAL_KINDS:
                 special_source_ids.add(stone.source_id)
             else:
                 raise ValueError(
-                    "Increment 2 board stones must be NORMAL, IMMORTAL, or "
-                    "DOUBLE_START sources"
+                    "board stones must originate from a point action"
                 )
             board_by_source[stone.source_id] = stone
 
         event_by_source: dict[str, SpecialEvent] = {}
         used_immortal = {Color.BLACK: 0, Color.WHITE: 0}
         used_double = {Color.BLACK: 0, Color.WHITE: 0}
+        used_eightway = {Color.BLACK: 0, Color.WHITE: 0}
         previous_order = -1
         previous_was_double = False
         seen_settled = False
         settled_count = 0
         for event in self.ledger:
-            if event.kind not in (ActionKind.IMMORTAL, ActionKind.DOUBLE_START):
-                raise ValueError(
-                    "Increment 2 ledger entries must be IMMORTAL or DOUBLE_START"
-                )
+            if event.kind not in _SPECIAL_KINDS:
+                raise ValueError("ledger entries must use a special point action kind")
             if event.logical_order <= previous_order:
                 raise ValueError("special ledger must be strictly ordered globally")
             if previous_was_double and event.logical_order == previous_order + 1:
@@ -1091,11 +1144,15 @@ class OracleState:
             previous_was_double = event.kind is ActionKind.DOUBLE_START
             if event.origin_action_number > self.atomic_action_count:
                 raise ValueError("special event action cannot exceed committed action count")
-            if (
-                event.kind is ActionKind.DOUBLE_START
-                and event.origin_action_number >= self.threshold
-            ):
-                raise ValueError("Double start action must be strictly before the threshold")
+            if event.kind is ActionKind.DOUBLE_START:
+                if event.origin_action_number >= self.threshold:
+                    raise ValueError(
+                        "Double start action must be strictly before the threshold"
+                    )
+            elif event.origin_action_number > self.threshold:
+                raise ValueError(
+                    "Immortal and Eightway actions cannot occur after the threshold"
+                )
             if event.source_point >= self.board.size * self.board.size:
                 raise ValueError("special event source point is off board")
             if event.origin_action_number >= len(self.psk_history):
@@ -1120,35 +1177,10 @@ class OracleState:
 
             if event.kind is ActionKind.IMMORTAL:
                 used_immortal[event.owner] += 1
-                if event.settlement_state is SettlementState.PENDING:
-                    if (
-                        event.ability_state is not AbilityState.ARMED
-                        or event.stone_state is not StoneState.ON_BOARD
-                        or event.tombstone
-                    ):
-                        raise ValueError(
-                            "pending Immortal must be armed, on board, and non-tombstone"
-                        )
-                elif (
-                    event.ability_state is not AbilityState.INACTIVE
-                    or not event.tombstone
-                ):
-                    raise ValueError(
-                        "settled Immortal must be inactive and tombstoned"
-                    )
+            elif event.kind is ActionKind.EIGHTWAY:
+                used_eightway[event.owner] += 1
             else:
                 used_double[event.owner] += 1
-                if not event.tombstone:
-                    raise ValueError("Double events must remain tombstones")
-                expected_ability = (
-                    AbilityState.CONSUMED
-                    if event.settlement_state is SettlementState.PENDING
-                    else AbilityState.INACTIVE
-                )
-                if event.ability_state is not expected_ability:
-                    raise ValueError(
-                        "Double event lifecycle must match its settlement state"
-                    )
 
             source = board_by_source.get(event.source_stone_id)
             if event.stone_state is StoneState.ON_BOARD:
@@ -1185,17 +1217,18 @@ class OracleState:
             black=SpecialQuotas(
                 immortal=used_immortal[Color.BLACK],
                 double_start=used_double[Color.BLACK],
-                eightway=0,
+                eightway=used_eightway[Color.BLACK],
             ),
             white=SpecialQuotas(
                 immortal=used_immortal[Color.WHITE],
                 double_start=used_double[Color.WHITE],
-                eightway=0,
+                eightway=used_eightway[Color.WHITE],
             ),
         )
         if self.used_quotas != expected_used:
             raise ValueError(
-                "used Double quotas and Immortal quotas must exactly match the ledger"
+                "used Double quotas, Immortal quotas, and Eightway quotas must "
+                "exactly match the ledger"
             )
 
         if self.pending_double is None:
@@ -1491,9 +1524,9 @@ class Transition:
                     replace(
                         final_event,
                         ability_state=(
-                            AbilityState.INACTIVE
-                            if final_event.kind is ActionKind.IMMORTAL
-                            else AbilityState.CONSUMED
+                            AbilityState.CONSUMED
+                            if final_event.kind is ActionKind.DOUBLE_START
+                            else AbilityState.INACTIVE
                         ),
                         stone_state=StoneState.CAPTURED,
                         settlement_state=SettlementState.PENDING,
@@ -1514,9 +1547,9 @@ class Transition:
                     replace(
                         final_event,
                         ability_state=(
-                            AbilityState.ARMED
-                            if final_event.kind is ActionKind.IMMORTAL
-                            else AbilityState.CONSUMED
+                            AbilityState.CONSUMED
+                            if final_event.kind is ActionKind.DOUBLE_START
+                            else AbilityState.ARMED
                         ),
                         stone_state=StoneState.ON_BOARD,
                         settlement_state=SettlementState.PENDING,
@@ -1530,21 +1563,16 @@ class Transition:
         ):
             event = replay_ledger[ledger_index]
             step = self.settlement.steps[step_index]
-            ability_deactivated = (
-                event.kind is ActionKind.IMMORTAL
-                and event.ability_state is AbilityState.ARMED
-                and event.stone_state is StoneState.ON_BOARD
-                and not event.tombstone
-            )
-            replay_ledger[ledger_index] = replace(
-                event,
-                ability_state=AbilityState.INACTIVE,
-                settlement_state=SettlementState.SETTLED,
-                tombstone=True,
-            )
-            replay_board, updated_ledger, removal_batches = _run_settlement_closure(
+            (
+                _settled_event,
+                replay_board,
+                updated_ledger,
+                ability_deactivated,
+                removal_batches,
+            ) = _pop_settlement_event(
                 replay_board,
                 tuple(replay_ledger),
+                ledger_index,
             )
             replay_ledger = list(updated_ledger)
             expected_position = atomic_event.log_position + step_index + 1
@@ -1586,9 +1614,16 @@ _POINT_KIND_RANGES = (
     (722, 1082, ActionKind.DOUBLE_START),
     (1083, 1443, ActionKind.EIGHTWAY),
 )
-_SPECIAL_KINDS = frozenset(
-    (ActionKind.IMMORTAL, ActionKind.DOUBLE_START, ActionKind.EIGHTWAY)
-)
+
+
+def _is_live_armed_event(event: SpecialEvent) -> bool:
+    return (
+        event.kind in _ARMED_ABILITY_KINDS
+        and event.ability_state is AbilityState.ARMED
+        and event.stone_state is StoneState.ON_BOARD
+        and event.settlement_state is SettlementState.PENDING
+        and not event.tombstone
+    )
 
 
 def settlement_threshold(board_size: int) -> int:
@@ -1691,13 +1726,13 @@ def decode_action_v1(
     )
 
 
-def scan_n4_groups(
+def scan_mixed_groups(
     board: Board,
     ledger: Iterable[SpecialEvent] | None = None,
     *,
     events: Iterable[SpecialEvent] | None = None,
 ) -> tuple[Group, ...]:
-    """Rebuild deterministic N4 topology and ledger-backed protection."""
+    """Rebuild deterministic mixed N4/N8 topology and protection directly."""
 
     if not isinstance(board, Board):
         raise TypeError("board must be Board")
@@ -1712,21 +1747,27 @@ def scan_n4_groups(
         ledger_events = tuple(source_events)
         if any(not isinstance(event, SpecialEvent) for event in ledger_events):
             raise TypeError("group-scan ledger must contain SpecialEvent values")
+
     stone_by_point = {stone.point: stone for stone in board.stones}
-    live_immortal_source_ids = {
-        event.source_stone_id
-        for event in ledger_events
-        if event.kind is ActionKind.IMMORTAL
-        and event.ability_state is AbilityState.ARMED
-        and event.stone_state is StoneState.ON_BOARD
-        and event.settlement_state is SettlementState.PENDING
-        and not event.tombstone
-        and (source := stone_by_point.get(event.source_point)) is not None
-        and source.source_id == event.source_stone_id
-        and source.color is event.owner
-        and source.origin_kind is ActionKind.IMMORTAL
-        and source.special_event_id == event.event_id
-    }
+    live_immortal_points: set[int] = set()
+    live_eightway_points: set[int] = set()
+    for event in ledger_events:
+        if not _is_live_armed_event(event):
+            continue
+        source = stone_by_point.get(event.source_point)
+        if (
+            source is None
+            or source.source_id != event.source_stone_id
+            or source.color is not event.owner
+            or source.origin_kind is not event.kind
+            or source.special_event_id != event.event_id
+        ):
+            continue
+        if event.kind is ActionKind.IMMORTAL:
+            live_immortal_points.add(source.point)
+        else:
+            live_eightway_points.add(source.point)
+
     black = set(board.occupancy.black)
     white = set(board.occupancy.white)
     occupied = black | white
@@ -1745,18 +1786,38 @@ def scan_n4_groups(
         while stack:
             point = stack.pop()
             stones.add(point)
-            for neighbor in _n4_neighbors(board.size, point):
-                if neighbor in own:
-                    if neighbor not in visited:
-                        visited.add(neighbor)
-                        stack.append(neighbor)
-                elif neighbor not in occupied:
-                    liberties.add(neighbor)
+
+            orthogonal_neighbors = _n4_neighbors(board.size, point)
+            if point in live_eightway_points:
+                interface = _n8_neighbors(board.size, point)
+                connection_neighbors = interface
+            elif live_eightway_points:
+                interface = orthogonal_neighbors
+                connection_neighbors = _n8_neighbors(board.size, point)
+            else:
+                interface = orthogonal_neighbors
+                connection_neighbors = orthogonal_neighbors
+            liberties.update(
+                neighbor for neighbor in interface if neighbor not in occupied
+            )
+
+            for neighbor in connection_neighbors:
+                if neighbor not in own or neighbor in visited:
+                    continue
+                if (
+                    neighbor in orthogonal_neighbors
+                    or point in live_eightway_points
+                    or neighbor in live_eightway_points
+                ):
+                    visited.add(neighbor)
+                    stack.append(neighbor)
+
         ordered_stones = tuple(sorted(stones))
         immortal_anchor_points = tuple(
-            point
-            for point in ordered_stones
-            if stone_by_point[point].source_id in live_immortal_source_ids
+            point for point in ordered_stones if point in live_immortal_points
+        )
+        eightway_anchor_points = tuple(
+            point for point in ordered_stones if point in live_eightway_points
         )
         groups.append(
             Group(
@@ -1768,10 +1829,24 @@ def scan_n4_groups(
                 ),
                 protected=bool(immortal_anchor_points),
                 immortal_anchor_points=immortal_anchor_points,
-                eightway_anchor_points=(),
+                eightway_anchor_points=eightway_anchor_points,
             )
         )
     return tuple(groups)
+
+
+def scan_n4_groups(
+    board: Board,
+    ledger: Iterable[SpecialEvent] | None = None,
+    *,
+    events: Iterable[SpecialEvent] | None = None,
+) -> tuple[Group, ...]:
+    """Compatibility name for the frozen mixed-topology group rebuild.
+
+    With no live Eightway source this is exactly the historical N4 scan.
+    """
+
+    return scan_mixed_groups(board, ledger, events=events)
 
 
 def score_chinese_area(board: Board) -> ScoreResult:
@@ -1867,91 +1942,64 @@ def apply_action(
             return _rejected(state, actor, action, RejectionCode.DOUBLE_THRESHOLD)
         if state.remaining_quotas.for_player(actor).for_kind(action.kind) == 0:
             return _rejected(state, actor, action, RejectionCode.QUOTA_EXHAUSTED)
-        if action.kind is ActionKind.DOUBLE_START:
-            prepared = _prepare_n4_placement(
-                state,
-                actor,
-                action,
-                origin_kind=ActionKind.DOUBLE_START,
-                special_event_id=f"special-{state.atomic_action_count + 1}",
-            )
-            if isinstance(prepared, RejectionCode):
-                return _rejected(state, actor, action, prepared)
-            board_after, captured_stones = prepared
-            return _commit_double_start(
-                state,
-                actor,
-                action,
-                board_after,
-                captured_stones,
-            )
-        if action.kind is ActionKind.IMMORTAL:
-            prepared = _prepare_n4_placement(
-                state,
-                actor,
-                action,
-                origin_kind=ActionKind.IMMORTAL,
-                special_event_id=f"special-{state.atomic_action_count + 1}",
-            )
-            if isinstance(prepared, RejectionCode):
-                return _rejected(state, actor, action, prepared)
-            board_after, captured_stones = prepared
-            return _commit_immortal(
-                state,
-                actor,
-                action,
-                board_after,
-                captured_stones,
-            )
-        point = _board_index(state.board.size, action)
-        if state.board.color_at(point) is not None:
-            return _rejected(state, actor, action, RejectionCode.POINT_OCCUPIED)
-        raise UnsupportedSliceAction(action, actor)
 
     if action.kind is ActionKind.PASS:
         return _commit_pass(state, actor, action)
-    if action.kind is not ActionKind.NORMAL:
-        raise AssertionError(f"unhandled action kind {action.kind.value}")
 
-    prepared = _prepare_n4_placement(
-        state,
-        actor,
-        action,
-        origin_kind=ActionKind.NORMAL,
-        special_event_id=None,
-    )
+    prepared = _prepare_placement(state, actor, action)
     if isinstance(prepared, RejectionCode):
         return _rejected(state, actor, action, prepared)
     board_after, captured_stones = prepared
-    return _commit_normal(
-        state,
-        actor,
-        action,
-        board_after,
-        captured_stones,
-    )
+    if action.kind is ActionKind.NORMAL:
+        return _commit_normal(
+            state,
+            actor,
+            action,
+            board_after,
+            captured_stones,
+        )
+    if action.kind is ActionKind.DOUBLE_START:
+        return _commit_double_start(
+            state,
+            actor,
+            action,
+            board_after,
+            captured_stones,
+        )
+    if action.kind in _ARMED_ABILITY_KINDS:
+        return _commit_armed_special(
+            state,
+            actor,
+            action,
+            board_after,
+            captured_stones,
+        )
+    raise AssertionError(f"unhandled action kind {action.kind.value}")
 
 
-def _prepare_n4_placement(
+def _prepare_placement(
     state: OracleState,
     actor: Color,
     action: DecodedAction,
-    *,
-    origin_kind: ActionKind,
-    special_event_id: str | None,
 ) -> tuple[Board, tuple[Stone, ...]] | RejectionCode:
+    if action.kind is ActionKind.PASS:
+        raise AssertionError("PASS does not use the placement transaction")
     point = _board_index(state.board.size, action)
     if state.board.color_at(point) is not None:
         return RejectionCode.POINT_OCCUPIED
+    action_number = state.atomic_action_count + 1
+    origin_kind = action.kind
+    special_event_id = (
+        f"special-{action_number}" if origin_kind in _SPECIAL_KINDS else None
+    )
     tentative_ledger = state.ledger
-    if origin_kind is ActionKind.IMMORTAL:
-        action_number = state.atomic_action_count + 1
+    if origin_kind in _ARMED_ABILITY_KINDS:
         tentative_ledger += (
             SpecialEvent(
                 event_id=f"special-{action_number}",
                 logical_order=action_number - 1,
                 owner=actor,
-                kind=ActionKind.IMMORTAL,
+                kind=origin_kind,
                 source_point=point,
                 source_stone_id=f"stone-{action_number}",
                 ability_state=AbilityState.ARMED,
@@ -1965,7 +2013,7 @@ def _prepare_n4_placement(
         tentative_ledger,
         actor,
         point,
-        origin_action_number=state.atomic_action_count + 1,
+        origin_action_number=action_number,
         origin_kind=origin_kind,
         special_event_id=special_event_id,
     )
@@ -2006,13 +2054,16 @@ def _build_point_action_event(
     )
 
 
-def _commit_immortal(
+def _commit_armed_special(
     state: OracleState,
     actor: Color,
     action: DecodedAction,
     board_after: Board,
     captured_stones: tuple[Stone, ...],
 ) -> Transition:
+    kind = action.kind
+    if kind not in _ARMED_ABILITY_KINDS:
+        raise AssertionError("armed special commit requires Immortal or Eightway")
     atomic_event, history = _build_point_action_event(
         state,
         actor,
@@ -2025,18 +2076,15 @@ def _commit_immortal(
     if placed_stone is None:
         raise AssertionError("point action event must contain its placed source")
     event_id = f"special-{action_number}"
-    if (
-        placed_stone.origin_kind is not ActionKind.IMMORTAL
-        or placed_stone.special_event_id != event_id
-    ):
-        raise AssertionError("accepted Immortal source has inconsistent event linkage")
+    if placed_stone.origin_kind is not kind or placed_stone.special_event_id != event_id:
+        raise AssertionError("accepted armed special source has inconsistent linkage")
 
     ledger = _ledger_after_captures(state.ledger, captured_stones) + (
         SpecialEvent(
             event_id=event_id,
             logical_order=action_number - 1,
             owner=actor,
-            kind=ActionKind.IMMORTAL,
+            kind=kind,
             source_point=placed_stone.point,
             source_stone_id=placed_stone.source_id,
             ability_state=AbilityState.ARMED,
@@ -2048,14 +2096,14 @@ def _commit_immortal(
     remaining_quotas = _replace_special_quota(
         state.remaining_quotas,
         actor,
-        ActionKind.IMMORTAL,
-        state.remaining_quotas.for_player(actor).immortal - 1,
+        kind,
+        state.remaining_quotas.for_player(actor).for_kind(kind) - 1,
     )
     used_quotas = _replace_special_quota(
         state.used_quotas,
         actor,
-        ActionKind.IMMORTAL,
-        state.used_quotas.for_player(actor).immortal + 1,
+        kind,
+        state.used_quotas.for_player(actor).for_kind(kind) + 1,
     )
     settlement_reason = _settlement_reason(
         state.phase, action_number, state.threshold, consecutive_passes=0
@@ -2392,6 +2440,42 @@ def _commit_pass(
     )
 
 
+def _pop_settlement_event(
+    board: Board,
+    ledger: tuple[SpecialEvent, ...],
+    ledger_index: int,
+) -> tuple[
+    SpecialEvent,
+    Board,
+    tuple[SpecialEvent, ...],
+    bool,
+    tuple[Occupancy, ...],
+]:
+    event = ledger[ledger_index]
+    if event.settlement_state is not SettlementState.PENDING:
+        raise AssertionError("settlement encountered an already-settled event")
+    ability_deactivated = _is_live_armed_event(event)
+    settled_event = replace(
+        event,
+        ability_state=AbilityState.INACTIVE,
+        settlement_state=SettlementState.SETTLED,
+        tombstone=True,
+    )
+    settled_ledger = list(ledger)
+    settled_ledger[ledger_index] = settled_event
+    settled_board, updated_ledger, removal_batches = _run_settlement_closure(
+        board,
+        tuple(settled_ledger),
+    )
+    return (
+        settled_event,
+        settled_board,
+        updated_ledger,
+        ability_deactivated,
+        removal_batches,
+    )
+
+
 def _settle_after_action(
     state: OracleState,
     *,
@@ -2412,27 +2496,17 @@ def _settle_after_action(
     history = list(history_after_action)
     steps: list[SettlementStepEvent] = []
     for index in range(settled_count - 1, -1, -1):
-        event = settled_ledger[index]
-        if event.settlement_state is not SettlementState.PENDING:
-            raise AssertionError("settlement encountered an already-settled event")
-        ability_deactivated = (
-            event.kind is ActionKind.IMMORTAL
-            and event.ability_state is AbilityState.ARMED
-            and event.stone_state is StoneState.ON_BOARD
-            and not event.tombstone
-        )
-        settled_event = replace(
-            event,
-            ability_state=AbilityState.INACTIVE,
-            settlement_state=SettlementState.SETTLED,
-            tombstone=True,
-        )
-        settled_ledger[index] = settled_event
         (
+            settled_event,
             current_board,
             updated_ledger,
+            ability_deactivated,
             removal_batches,
-        ) = _run_settlement_closure(current_board, tuple(settled_ledger))
+        ) = _pop_settlement_event(
+            current_board,
+            tuple(settled_ledger),
+            index,
+        )
         settled_ledger = list(updated_ledger)
         step_offset = len(steps) + 1
         history.append(current_board.occupancy)
@@ -2492,7 +2566,7 @@ def _run_settlement_closure(
     current_ledger = ledger
     removal_batches: list[Occupancy] = []
     while True:
-        groups = scan_n4_groups(current_board, current_ledger)
+        groups = scan_mixed_groups(current_board, current_ledger)
         doomed = {
             point
             for group in groups
@@ -2513,7 +2587,7 @@ def _run_settlement_closure(
 
     # The frozen algorithm requires a final full rebuild even after the fixed
     # point is known; the deterministic scan has no cached topology to retain.
-    scan_n4_groups(current_board, current_ledger)
+    scan_mixed_groups(current_board, current_ledger)
     return current_board, current_ledger, tuple(removal_batches)
 
 
@@ -2536,7 +2610,7 @@ def _simulate_placement(
     )
     tentative = Board.from_stones(board.size, board.stones + (tentative_source,))
 
-    first_scan = scan_n4_groups(tentative, ledger)
+    first_scan = scan_mixed_groups(tentative, ledger)
     opponent = actor.opponent()
     doomed: set[int] = set()
     for group in first_scan:
@@ -2551,7 +2625,7 @@ def _simulate_placement(
         (stone for stone in tentative.stones if stone.point not in doomed),
     )
 
-    second_scan = scan_n4_groups(after_capture, ledger)
+    second_scan = scan_mixed_groups(after_capture, ledger)
     own_group = next(
         (
             group
@@ -2643,7 +2717,7 @@ def _ledger_after_captures(
     for event in ledger:
         if event.source_stone_id in captured_source_ids:
             matched.add(event.source_stone_id)
-            if event.kind is ActionKind.IMMORTAL:
+            if event.kind in _ARMED_ABILITY_KINDS:
                 updated.append(
                     replace(
                         event,
@@ -2747,6 +2821,17 @@ def _n4_neighbors(size: int, point: int) -> tuple[int, ...]:
     return tuple(neighbors)
 
 
+def _n8_neighbors(size: int, point: int) -> tuple[int, ...]:
+    x = point % size
+    y = point // size
+    return tuple(
+        size * neighbor_y + neighbor_x
+        for neighbor_y in range(max(0, y - 1), min(size, y + 2))
+        for neighbor_x in range(max(0, x - 1), min(size, x + 2))
+        if neighbor_x != x or neighbor_y != y
+    )
+
+
 def _coerce_color(value: Color | str) -> Color:
     if isinstance(value, Color):
         return value
@@ -2833,6 +2918,7 @@ __all__ = [
     "apply_action",
     "decode_action_v1",
     "new_game",
+    "scan_mixed_groups",
     "scan_n4_groups",
     "score_chinese_area",
     "settlement_threshold",

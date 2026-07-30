@@ -36,6 +36,38 @@ def _capturing_double_request() -> dict[str, object]:
     return builder.request()
 
 
+def _legacy_eightway_boundary_requests(prefix: str) -> list[dict[str, object]]:
+    suicide = diff._EpisodeBuilder.create(f"{prefix}-eightway-suicide", 9, "ONE")
+    black_fillers = ((0, 0), (2, 0), (4, 0), (6, 0), (8, 0), (0, 2), (2, 2), (8, 2))
+    white_ring = ((3, 3), (4, 3), (5, 3), (3, 4), (5, 4), (3, 5), (4, 5), (5, 5))
+    for black_point, white_point in zip(black_fillers, white_ring):
+        suicide.add(diff.Color.BLACK, diff.board_action_v1(9, *black_point))
+        suicide.add(diff.Color.WHITE, diff.board_action_v1(9, *white_point))
+    suicide.add(
+        diff.Color.BLACK,
+        diff.board_action_v1(9, 4, 4, diff.ActionKind.EIGHTWAY),
+    )
+
+    psk = diff._EpisodeBuilder.create(f"{prefix}-eightway-psk", 9, "ONE")
+    for actor, x, y in (
+        (diff.Color.BLACK, 1, 2),
+        (diff.Color.WHITE, 1, 1),
+        (diff.Color.BLACK, 3, 2),
+        (diff.Color.WHITE, 3, 1),
+        (diff.Color.BLACK, 2, 3),
+        (diff.Color.WHITE, 2, 0),
+        (diff.Color.BLACK, 8, 8),
+        (diff.Color.WHITE, 2, 2),
+        (diff.Color.BLACK, 2, 1),
+    ):
+        psk.add(actor, diff.board_action_v1(9, x, y))
+    psk.add(
+        diff.Color.WHITE,
+        diff.board_action_v1(9, 2, 2, diff.ActionKind.EIGHTWAY),
+    )
+    return [suicide.request(), psk.request()]
+
+
 PINNED_LEGACY_SEED = "opt-in-integration"
 PINNED_LEGACY_RANDOM_CANDIDATE_COUNT = 1600
 PINNED_LEGACY_SUMMARY = {
@@ -267,6 +299,24 @@ class Sha256CounterGeneratorTests(unittest.TestCase):
             response["observations"][-2]["whiteOccupancy"],
             observation["whiteOccupancy"],
         )
+
+    def test_legacy_adapter_maps_eightway_suicide_and_psk_to_unsupported_rollback(self) -> None:
+        for request in _legacy_eightway_boundary_requests("python-v0"):
+            response = diff.oracle_episode_response(request)
+            previous, observation = response["observations"][-2:]
+            with self.subTest(episode=request["episodeId"]):
+                self.assertEqual("UNSUPPORTED", observation["status"])
+                self.assertEqual("UNSUPPORTED_BY_SLICE", observation["errorCode"])
+                for field in (
+                    "A",
+                    "actor",
+                    "blackOccupancy",
+                    "phase",
+                    "pskHistory",
+                    "remainingQuotas",
+                    "whiteOccupancy",
+                ):
+                    self.assertEqual(previous[field], observation[field], field)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -686,6 +736,22 @@ class ExecutableIntegrationTests(unittest.TestCase):
         expected = diff.oracle_episode_response(request)
         self.assertEqual(expected, actual)
         self.assertEqual("UNSUPPORTED", actual["observations"][-1]["status"])
+
+    def test_probe_maps_eightway_suicide_and_psk_to_legacy_unsupported(self) -> None:
+        for request in _legacy_eightway_boundary_requests("cpp-v0"):
+            completed = diff._run_probe_process(
+                [str(self.probe)], diff.canonical_json(request) + "\n", 5
+            )
+            with self.subTest(episode=request["episodeId"]):
+                self.assertEqual(0, completed.returncode)
+                self.assertEqual("", completed.stderr)
+                actual = diff.parse_canonical_response_line(completed.stdout[:-1], request)
+                self.assertEqual(diff.oracle_episode_response(request), actual)
+                previous, observation = actual["observations"][-2:]
+                self.assertEqual("UNSUPPORTED", observation["status"])
+                self.assertEqual(previous["pskHistory"], observation["pskHistory"])
+                self.assertEqual(previous["blackOccupancy"], observation["blackOccupancy"])
+                self.assertEqual(previous["whiteOccupancy"], observation["whiteOccupancy"])
 
     def test_probe_fails_closed_on_malformed_frame(self) -> None:
         completed = subprocess.run(
