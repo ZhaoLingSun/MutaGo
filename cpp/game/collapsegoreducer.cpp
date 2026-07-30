@@ -44,7 +44,89 @@ vector<Loc> rowMajorPointsToLocs(
   return locs;
 }
 
+bool isActionBeforeAutomaticTransition(const CollapseGoState& state) {
+  if(state.getPhase() == CollapseGoPhase::COLLAPSE_PLAY) {
+    if(state.getAtomicActionCount() == state.getConfig().getThreshold())
+      return true;
+    return state.getAtomicActionCount() < state.getConfig().getThreshold() &&
+      state.getConsecutivePasses() == 2;
+  }
+  return state.getPhase() == CollapseGoPhase::ORDINARY_PLAY &&
+    state.getConsecutivePasses() == 2;
 }
+
+}
+
+struct CollapseGoReducer::LegalityContext {
+  int boardSize;
+  CollapseGoPhase phase;
+  Player actor;
+  bool pendingDouble;
+  int64_t atomicActionCount;
+  int threshold;
+  int64_t immortalQuota;
+  int64_t doubleQuota;
+  int64_t eightwayQuota;
+  vector<int> armedImmortalAnchors;
+  vector<int> armedEightwaySources;
+  const PositionalSuperkoHistory* positionalSuperkoHistory;
+
+  explicit LegalityContext(const CollapseGoState& state)
+    : boardSize(state.getConfig().getBoardSize()),
+      phase(state.getPhase()),
+      actor(state.getActor()),
+      pendingDouble(state.getPendingDouble().has_value()),
+      atomicActionCount(state.getAtomicActionCount()),
+      threshold(state.getConfig().getThreshold()),
+      immortalQuota(
+        actor == P_BLACK || actor == P_WHITE ?
+        state.getRemainingQuota(actor,CollapseGoAbility::IMMORTAL) : 0
+      ),
+      doubleQuota(
+        actor == P_BLACK || actor == P_WHITE ?
+        state.getRemainingQuota(actor,CollapseGoAbility::DOUBLE_MOVE) : 0
+      ),
+      eightwayQuota(
+        actor == P_BLACK || actor == P_WHITE ?
+        state.getRemainingQuota(actor,CollapseGoAbility::EIGHTWAY) : 0
+      ),
+      armedImmortalAnchors(state.getArmedImmortalAnchors()),
+      armedEightwaySources(state.getArmedEightwaySources()),
+      positionalSuperkoHistory(&state.getPositionalSuperkoHistory())
+  {}
+};
+
+struct CollapseGoReducer::PreparedPlacement {
+  CollapseGoPosition preCapturePosition;
+  CollapseGoPosition stablePosition;
+  vector<int> capturedPoints;
+
+  PreparedPlacement(
+    CollapseGoPosition&& preparedPreCapturePosition,
+    CollapseGoPosition&& preparedStablePosition,
+    vector<int>&& preparedCapturedPoints
+  )
+    : preCapturePosition(move(preparedPreCapturePosition)),
+      stablePosition(move(preparedStablePosition)),
+      capturedPoints(move(preparedCapturedPoints))
+  {}
+};
+
+struct CollapseGoReducer::PreparedAction {
+  CollapseGoApplyError error;
+  GameActionKind kind;
+  int point;
+  optional<CollapseGoStoneSource> source;
+  optional<PreparedPlacement> placement;
+
+  explicit PreparedAction(GameActionKind actionKind)
+    : error(CollapseGoApplyError::INTERNAL_INVARIANT),
+      kind(actionKind),
+      point(-1),
+      source(),
+      placement()
+  {}
+};
 
 bool CollapseGoRemovalBatch::operator==(const CollapseGoRemovalBatch& other) const {
   return blackStones == other.blackStones && whiteStones == other.whiteStones;
@@ -141,6 +223,174 @@ CollapseGoAbility CollapseGoReducer::abilityForAction(GameActionKind kind) {
   }
 }
 
+CollapseGoReducer::LegalityContext CollapseGoReducer::buildLegalityContext(
+  const CollapseGoState& state
+) {
+  return LegalityContext(state);
+}
+
+CollapseGoReducer::PreparedAction CollapseGoReducer::prepareAction(
+  const CollapseGoState& state,
+  const LegalityContext& context,
+  Player actor,
+  const GameAction& action
+) {
+  const GameActionKind kind = action.getKind();
+  const bool isPointAction = GameAction::isPointKind(kind);
+  const bool isSpecialAction = kind == GameActionKind::IMMORTAL ||
+    kind == GameActionKind::DOUBLE_START || kind == GameActionKind::EIGHTWAY;
+  PreparedAction prepared(kind);
+
+  // These reducer-produced audit snapshots precede mandatory settlement or scoring
+  // and are never exposed as player decision states.
+  if(isActionBeforeAutomaticTransition(state))
+    return prepared;
+
+  // Frozen precedence begins with footprint, then terminal, phase, actor, and contextual continuation kind.
+  if(isPointAction && !action.isInBoardFootprint(context.boardSize)) {
+    prepared.error = CollapseGoApplyError::POINT_OFF_BOARD;
+    return prepared;
+  }
+  if(context.phase == CollapseGoPhase::TERMINAL) {
+    prepared.error = CollapseGoApplyError::TERMINAL_STATE;
+    return prepared;
+  }
+  if(context.phase == CollapseGoPhase::ORDINARY_PLAY && isSpecialAction) {
+    prepared.error = CollapseGoApplyError::INVALID_PHASE;
+    return prepared;
+  }
+  if(actor != context.actor) {
+    prepared.error = CollapseGoApplyError::WRONG_ACTOR;
+    return prepared;
+  }
+  if(context.pendingDouble && kind != GameActionKind::NORMAL && kind != GameActionKind::PASS) {
+    prepared.error = CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN;
+    return prepared;
+  }
+
+  if(isPointAction) {
+    int x = action.getBoardX(context.boardSize);
+    int y = action.getBoardY(context.boardSize);
+    prepared.point = state.getPosition().getPoint(x,y);
+  }
+
+  if(isSpecialAction) {
+    if(kind == GameActionKind::DOUBLE_START && context.atomicActionCount + 2 > context.threshold) {
+      prepared.error = CollapseGoApplyError::DOUBLE_THRESHOLD;
+      return prepared;
+    }
+    int64_t remainingQuota;
+    if(kind == GameActionKind::IMMORTAL)
+      remainingQuota = context.immortalQuota;
+    else if(kind == GameActionKind::DOUBLE_START)
+      remainingQuota = context.doubleQuota;
+    else
+      remainingQuota = context.eightwayQuota;
+    if(remainingQuota == 0) {
+      prepared.error = CollapseGoApplyError::QUOTA_EXHAUSTED;
+      return prepared;
+    }
+  }
+
+  if(kind == GameActionKind::PASS) {
+    prepared.error = CollapseGoApplyError::NONE;
+    return prepared;
+  }
+  if(!isPointAction)
+    return prepared;
+  if(!state.getPosition().isEmpty(prepared.point)) {
+    prepared.error = CollapseGoApplyError::POINT_OCCUPIED;
+    return prepared;
+  }
+
+  const int64_t originActionNumber = context.atomicActionCount + 1;
+  const optional<int64_t> specialLink = isSpecialAction ?
+    optional<int64_t>(originActionNumber) : nullopt;
+  prepared.source.emplace(originActionNumber,kind,specialLink);
+
+  vector<int> armedImmortalAnchors(context.armedImmortalAnchors);
+  vector<int> armedEightwaySources(context.armedEightwaySources);
+  if(kind == GameActionKind::IMMORTAL) {
+    armedImmortalAnchors.push_back(prepared.point);
+    sort(armedImmortalAnchors.begin(),armedImmortalAnchors.end());
+  }
+  else if(kind == GameActionKind::EIGHTWAY) {
+    armedEightwaySources.push_back(prepared.point);
+    sort(armedEightwaySources.begin(),armedEightwaySources.end());
+  }
+
+  CollapseGoPosition preCapturePosition(state.getPosition());
+  preCapturePosition.placeStone(prepared.point,actor,*prepared.source);
+  CollapseGoTopology firstTopology = CollapseGoTopology::fullScan(
+    preCapturePosition,armedImmortalAnchors,armedEightwaySources
+  );
+  vector<int> capturedPoints;
+  const Player opponent = getOpp(actor);
+  for(const CollapseGoGroup& group: firstTopology.getGroups()) {
+    if(group.color == opponent && group.liberties.empty() && !group.protectedByImmortal)
+      capturedPoints.insert(capturedPoints.end(),group.stones.begin(),group.stones.end());
+  }
+  sort(capturedPoints.begin(),capturedPoints.end());
+  capturedPoints.erase(unique(capturedPoints.begin(),capturedPoints.end()),capturedPoints.end());
+
+  auto removeCapturedAnchors = [&](vector<int>& anchors) {
+    anchors.erase(
+      remove_if(anchors.begin(),anchors.end(),[&](int point) {
+        return binary_search(capturedPoints.begin(),capturedPoints.end(),point);
+      }),
+      anchors.end()
+    );
+  };
+  removeCapturedAnchors(armedImmortalAnchors);
+  removeCapturedAnchors(armedEightwaySources);
+
+  CollapseGoPosition stablePosition(preCapturePosition);
+  stablePosition.removeStones(capturedPoints);
+  CollapseGoTopology secondTopology = CollapseGoTopology::fullScan(
+    stablePosition,armedImmortalAnchors,armedEightwaySources
+  );
+  const CollapseGoGroup& ownGroup = secondTopology.getGroupAt(prepared.point);
+  if(ownGroup.liberties.empty() && !ownGroup.protectedByImmortal) {
+    prepared.error = CollapseGoApplyError::SUICIDE;
+    return prepared;
+  }
+
+  PositionalSuperkoKey candidateKey(
+    context.boardSize,stablePosition.getRowMajorOccupancy()
+  );
+  if(context.positionalSuperkoHistory->contains(candidateKey)) {
+    prepared.error = CollapseGoApplyError::POSITIONAL_SUPERKO;
+    return prepared;
+  }
+
+  prepared.placement.emplace(
+    move(preCapturePosition),move(stablePosition),move(capturedPoints)
+  );
+  prepared.error = CollapseGoApplyError::NONE;
+  return prepared;
+}
+
+CollapseGoLegalMask CollapseGoReducer::deriveLegalMask(const CollapseGoState& state) {
+  CollapseGoLegalMask mask;
+  if(state.getPhase() == CollapseGoPhase::TERMINAL ||
+     isActionBeforeAutomaticTransition(state))
+    return mask;
+
+  LegalityContext context = buildLegalityContext(state);
+  for(int actionId = 0; actionId < GameAction::FLAT_ACTION_COUNT; actionId++) {
+    GameAction action = GameAction::decode(actionId);
+    PreparedAction prepared = prepareAction(state,context,state.getActor(),action);
+    if(prepared.error == CollapseGoApplyError::NONE)
+      mask.set(static_cast<size_t>(actionId));
+    else if(prepared.error == CollapseGoApplyError::INTERNAL_INVARIANT ||
+            prepared.error == CollapseGoApplyError::UNSUPPORTED_BY_SLICE)
+      throw StringError("Collapse Go legal-mask preparation reached an internal error");
+  }
+  if(!mask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)))
+    throw StringError("Collapse Go nonterminal legal mask must contain PASS");
+  return mask;
+}
+
 void CollapseGoReducer::appendOccupancy(
   CollapseGoState& state,
   const vector<uint8_t>& occupancy
@@ -152,49 +402,6 @@ void CollapseGoReducer::appendOccupancy(
 
 void CollapseGoReducer::appendCurrentOccupancy(CollapseGoState& state) {
   appendOccupancy(state,state.position.getRowMajorOccupancy());
-}
-
-CollapseGoApplyError CollapseGoReducer::simulatePlacement(
-  const CollapseGoState& committedState,
-  CollapseGoState& candidate,
-  int point,
-  Player actor,
-  const CollapseGoStoneSource& source,
-  vector<int>& capturedPoints
-) {
-  candidate.position.placeStone(point,actor,source);
-
-  CollapseGoTopology firstTopology = CollapseGoTopology::fullScan(
-    candidate.position,
-    candidate.getArmedImmortalAnchors(),
-    candidate.getArmedEightwaySources()
-  );
-  const Player opponent = getOpp(actor);
-  for(const CollapseGoGroup& group: firstTopology.getGroups()) {
-    if(group.color == opponent && group.liberties.empty() && !group.protectedByImmortal)
-      capturedPoints.insert(capturedPoints.end(),group.stones.begin(),group.stones.end());
-  }
-  sort(capturedPoints.begin(),capturedPoints.end());
-  capturedPoints.erase(unique(capturedPoints.begin(),capturedPoints.end()),capturedPoints.end());
-  markCapturedSpecialSources(candidate,candidate.position,capturedPoints);
-  candidate.position.removeStones(capturedPoints);
-
-  CollapseGoTopology secondTopology = CollapseGoTopology::fullScan(
-    candidate.position,
-    candidate.getArmedImmortalAnchors(),
-    candidate.getArmedEightwaySources()
-  );
-  const CollapseGoGroup& ownGroup = secondTopology.getGroupAt(point);
-  if(ownGroup.liberties.empty() && !ownGroup.protectedByImmortal)
-    return CollapseGoApplyError::SUICIDE;
-
-  PositionalSuperkoKey candidateKey(
-    candidate.position.getBoardSize(),
-    candidate.position.getRowMajorOccupancy()
-  );
-  if(committedState.getPositionalSuperkoHistory().contains(candidateKey))
-    return CollapseGoApplyError::POSITIONAL_SUPERKO;
-  return CollapseGoApplyError::NONE;
 }
 
 void CollapseGoReducer::markCapturedSpecialSources(
@@ -417,92 +624,12 @@ CollapseGoScore CollapseGoReducer::scoreChineseArea(const CollapseGoPosition& po
 }
 
 CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player actor, const GameAction& action) {
-  const int boardSize = state.config.getBoardSize();
-  const GameActionKind kind = action.getKind();
-  const bool isPointAction = GameAction::isPointKind(kind);
-  const bool isSpecialAction = kind == GameActionKind::IMMORTAL ||
-    kind == GameActionKind::DOUBLE_START || kind == GameActionKind::EIGHTWAY;
+  LegalityContext context = buildLegalityContext(state);
+  PreparedAction prepared = prepareAction(state,context,actor,action);
+  if(prepared.error != CollapseGoApplyError::NONE)
+    return reject(prepared.error);
 
-  // Frozen precedence begins with footprint, then terminal, phase, actor, and contextual continuation kind.
-  if(isPointAction && !action.isInBoardFootprint(boardSize))
-    return reject(CollapseGoApplyError::POINT_OFF_BOARD);
-  if(state.phase == CollapseGoPhase::TERMINAL)
-    return reject(CollapseGoApplyError::TERMINAL_STATE);
-  if(state.phase == CollapseGoPhase::ORDINARY_PLAY && isSpecialAction)
-    return reject(CollapseGoApplyError::INVALID_PHASE);
-  if(actor != state.actor)
-    return reject(CollapseGoApplyError::WRONG_ACTOR);
-  if(state.pendingDouble.has_value() && kind != GameActionKind::NORMAL && kind != GameActionKind::PASS)
-    return reject(CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN);
-
-  int point = -1;
-  if(isPointAction) {
-    int x = action.getBoardX(boardSize);
-    int y = action.getBoardY(boardSize);
-    point = state.position.getPoint(x,y);
-  }
-
-  if(isSpecialAction) {
-    if(kind == GameActionKind::DOUBLE_START && state.atomicActionCount + 2 > state.config.getThreshold())
-      return reject(CollapseGoApplyError::DOUBLE_THRESHOLD);
-    CollapseGoAbility ability = abilityForAction(kind);
-    if(state.getRemainingQuota(actor,ability) == 0)
-      return reject(CollapseGoApplyError::QUOTA_EXHAUSTED);
-    if(!state.position.isEmpty(point))
-      return reject(CollapseGoApplyError::POINT_OCCUPIED);
-
-    CollapseGoState candidate(state);
-    vector<int> capturedPoints;
-    const int64_t originActionNumber = state.atomicActionCount + 1;
-    const int64_t specialLink = originActionNumber;
-    candidate.ledger.append(CollapseGoLedgerEntry(
-      specialLink,originActionNumber,actor,kind,point
-    ));
-    CollapseGoStoneSource source(originActionNumber,kind,specialLink);
-    CollapseGoApplyError simulationError = simulatePlacement(
-      state,candidate,point,actor,source,capturedPoints
-    );
-    if(simulationError != CollapseGoApplyError::NONE)
-      return reject(simulationError);
-
-    CollapseGoQuotas& remaining = actor == P_BLACK ? candidate.blackRemainingQuotas : candidate.whiteRemainingQuotas;
-    CollapseGoQuotas& used = actor == P_BLACK ? candidate.blackUsedQuotas : candidate.whiteUsedQuotas;
-    if(kind == GameActionKind::IMMORTAL) {
-      remaining.immortal--;
-      used.immortal++;
-      candidate.actor = getOpp(actor);
-    }
-    else if(kind == GameActionKind::DOUBLE_START) {
-      remaining.doubleMove--;
-      used.doubleMove++;
-      candidate.pendingDouble = CollapseGoPendingDouble(actor,specialLink,originActionNumber);
-    }
-    else {
-      remaining.eightway--;
-      used.eightway++;
-      candidate.actor = getOpp(actor);
-    }
-    candidate.atomicActionCount++;
-    candidate.revision++;
-    candidate.logPosition++;
-    candidate.consecutivePasses = 0;
-    appendCurrentOccupancy(candidate);
-
-    CollapseGoApplyResult result;
-    result.accepted = true;
-    result.error = CollapseGoApplyError::NONE;
-    result.positionalSuperkoAppends = 1;
-    result.capturedStones = rowMajorPointsToLocs(candidate.position,capturedPoints);
-    if(candidate.atomicActionCount == candidate.config.getThreshold())
-      result.atomicStateSnapshot = candidate;
-
-    completeSettlementIfTriggered(candidate,result);
-
-    candidate.checkConsistency();
-    state = candidate;
-    return result;
-  }
-
+  const GameActionKind kind = prepared.kind;
   if(kind == GameActionKind::PASS) {
     CollapseGoState candidate(state);
     const bool isDoubleContinuation = candidate.pendingDouble.has_value();
@@ -544,35 +671,72 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     return result;
   }
 
-  if(kind != GameActionKind::NORMAL)
-    return reject(CollapseGoApplyError::INTERNAL_INVARIANT);
-  if(!state.position.isEmpty(point))
-    return reject(CollapseGoApplyError::POINT_OCCUPIED);
+  if(!GameAction::isPointKind(kind) || !prepared.source.has_value() || !prepared.placement.has_value())
+    throw StringError("Collapse Go accepted point preparation is incomplete");
 
+  const bool isSpecialAction = kind == GameActionKind::IMMORTAL ||
+    kind == GameActionKind::DOUBLE_START || kind == GameActionKind::EIGHTWAY;
   CollapseGoState candidate(state);
-  vector<int> capturedPoints;
-  CollapseGoStoneSource source(state.atomicActionCount + 1,GameActionKind::NORMAL,nullopt);
-  CollapseGoApplyError simulationError = simulatePlacement(
-    state,candidate,point,actor,source,capturedPoints
+  if(isSpecialAction) {
+    if(!prepared.source->specialLink.has_value())
+      throw StringError("Collapse Go prepared special action has no ledger link");
+    candidate.ledger.append(CollapseGoLedgerEntry(
+      *prepared.source->specialLink,
+      prepared.source->originActionNumber,
+      actor,
+      kind,
+      prepared.point
+    ));
+  }
+  markCapturedSpecialSources(
+    candidate,
+    prepared.placement->preCapturePosition,
+    prepared.placement->capturedPoints
   );
-  if(simulationError != CollapseGoApplyError::NONE)
-    return reject(simulationError);
+  candidate.position = move(prepared.placement->stablePosition);
+
+  if(isSpecialAction) {
+    CollapseGoQuotas& remaining = actor == P_BLACK ?
+      candidate.blackRemainingQuotas : candidate.whiteRemainingQuotas;
+    CollapseGoQuotas& used = actor == P_BLACK ? candidate.blackUsedQuotas : candidate.whiteUsedQuotas;
+    CollapseGoAbility ability = abilityForAction(kind);
+    if(ability == CollapseGoAbility::IMMORTAL) {
+      remaining.immortal--;
+      used.immortal++;
+      candidate.actor = getOpp(actor);
+    }
+    else if(ability == CollapseGoAbility::DOUBLE_MOVE) {
+      remaining.doubleMove--;
+      used.doubleMove++;
+      candidate.pendingDouble = CollapseGoPendingDouble(
+        actor,*prepared.source->specialLink,prepared.source->originActionNumber
+      );
+    }
+    else {
+      remaining.eightway--;
+      used.eightway++;
+      candidate.actor = getOpp(actor);
+    }
+  }
+  else {
+    if(candidate.pendingDouble.has_value())
+      candidate.pendingDouble.reset();
+    candidate.actor = getOpp(actor);
+  }
+
+  candidate.atomicActionCount++;
+  candidate.revision++;
+  candidate.logPosition++;
+  candidate.consecutivePasses = 0;
+  appendCurrentOccupancy(candidate);
 
   CollapseGoApplyResult result;
   result.accepted = true;
   result.error = CollapseGoApplyError::NONE;
   result.positionalSuperkoAppends = 1;
-  result.capturedStones = rowMajorPointsToLocs(candidate.position,capturedPoints);
-
-  const bool isDoubleContinuation = candidate.pendingDouble.has_value();
-  candidate.atomicActionCount++;
-  candidate.revision++;
-  candidate.logPosition++;
-  candidate.consecutivePasses = 0;
-  if(isDoubleContinuation)
-    candidate.pendingDouble.reset();
-  candidate.actor = getOpp(actor);
-  appendCurrentOccupancy(candidate);
+  result.capturedStones = rowMajorPointsToLocs(
+    candidate.position,prepared.placement->capturedPoints
+  );
   if(candidate.atomicActionCount == candidate.config.getThreshold())
     result.atomicStateSnapshot = candidate;
 

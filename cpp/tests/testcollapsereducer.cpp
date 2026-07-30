@@ -555,6 +555,102 @@ void enterOrdinaryPlay(CollapseGoState& state) {
   testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
 }
 
+void assertNonDecisionSnapshotFailsClosed(const CollapseGoState& snapshot) {
+  CollapseGoState before(snapshot);
+  CollapseGoLegalMask first = CollapseGoReducer::deriveLegalMask(snapshot);
+  CollapseGoLegalMask second = CollapseGoReducer::deriveLegalMask(snapshot);
+  testAssert(first.none());
+  testAssert(second.none());
+  testAssert(snapshot.isEqualForTesting(before));
+
+  CollapseGoState candidate(snapshot);
+  CollapseGoApplyResult rejected = CollapseGoReducer::apply(
+    candidate,
+    getOpp(snapshot.getActor()),
+    GameAction::fromCanvas(GameActionKind::IMMORTAL,0,0)
+  );
+  testAssert(!rejected.accepted);
+  testAssert(rejected.error == CollapseGoApplyError::INTERNAL_INVARIANT);
+  testAssert(rejected.capturedStones.empty());
+  testAssert(!rejected.atomicStateSnapshot.has_value());
+  testAssert(rejected.settlementSteps.empty());
+  testAssert(!rejected.settlementTriggered);
+  testAssert(rejected.settlementReason == CollapseGoSettlementReason::NONE);
+  testAssert(!rejected.terminalScoreEventEmitted);
+  testAssert(rejected.positionalSuperkoAppends == 0);
+  testAssert(candidate.isEqualForTesting(before));
+  testAssert(snapshot.isEqualForTesting(before));
+}
+
+CollapseGoLegalMask assertLegalMaskMatchesApply(const CollapseGoState& state) {
+  state.checkConsistency();
+  CollapseGoState before(state);
+  CollapseGoLegalMask first = CollapseGoReducer::deriveLegalMask(state);
+  CollapseGoLegalMask second = CollapseGoReducer::deriveLegalMask(state);
+  if(first != second)
+    throw StringError("Collapse Go legal-mask derivation is nondeterministic");
+  if(!state.isEqualForTesting(before))
+    throw StringError("Collapse Go legal-mask derivation mutated its source state");
+  testAssert(first.size() == static_cast<size_t>(GameAction::FLAT_ACTION_COUNT));
+
+  for(int actionId = 0; actionId < GameAction::FLAT_ACTION_COUNT; actionId++) {
+    CollapseGoState candidate(state);
+    CollapseGoApplyResult result = CollapseGoReducer::apply(
+      candidate,state.getActor(),GameAction::decode(actionId)
+    );
+    if(first.test(static_cast<size_t>(actionId)) != result.accepted)
+      throw StringError("Collapse Go legal-mask mismatch at action " + to_string(actionId));
+    if(!result.accepted && !candidate.isEqualForTesting(state))
+      throw StringError("Rejected Collapse Go mask oracle action mutated its fresh state copy");
+  }
+
+  if(!state.isEqualForTesting(before))
+    throw StringError("Collapse Go legal-mask equivalence checks mutated their source state");
+  if(state.getPhase() == CollapseGoPhase::TERMINAL)
+    testAssert(first.none());
+  else
+    testAssert(first.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+  return first;
+}
+
+void assertD4LegalMask(
+  const CollapseGoLegalMask& reference,
+  const CollapseGoLegalMask& transformed,
+  int symmetry
+) {
+  for(int actionId = 0; actionId < GameAction::FLAT_ACTION_COUNT; actionId++) {
+    int transformedActionId = GameAction::decode(actionId).transformed(symmetry).getActionId();
+    if(reference.test(static_cast<size_t>(actionId)) !=
+       transformed.test(static_cast<size_t>(transformedActionId)))
+      throw StringError("Collapse Go D4 legal-mask mismatch at action " + to_string(actionId));
+  }
+}
+
+void playToAtomicActionCount(CollapseGoState& state, int64_t targetCount) {
+  int nextPoint = 0;
+  while(state.getAtomicActionCount() < targetCount) {
+    if(targetCount - state.getAtomicActionCount() >= 2)
+      playPass(state);
+    while(nextPoint < state.getPosition().getPointCount() &&
+          !state.getPosition().isEmpty(nextPoint))
+      nextPoint++;
+    if(nextPoint >= state.getPosition().getPointCount())
+      throw StringError("Collapse Go threshold-mask setup ran out of empty points");
+    playNormal(
+      state,
+      state.getPosition().getX(nextPoint),
+      state.getPosition().getY(nextPoint)
+    );
+    nextPoint++;
+  }
+  testAssert(state.getAtomicActionCount() == targetCount);
+  testAssert(state.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+}
+
+int actionIdAt(GameActionKind kind, int boardSize, int x, int y) {
+  return GameAction::fromBoard(kind,boardSize,x,y).getActionId();
+}
+
 }
 
 void Tests::runCollapseReducerTests() {
@@ -2443,6 +2539,277 @@ void Tests::runCollapseReducerTests() {
     testAssert(score.winner == P_WHITE);
     testAssert(score.marginNumerator == 13);
     testAssert(score.getMargin() == 6.5);
+  }
+
+  // Reducer-produced action-before-automatic-transition snapshots are audit-only, not decisions.
+  {
+    CollapseGoState thresholdState(CollapseGoConfig::allOne(9));
+    const int threshold = thresholdState.getConfig().getThreshold();
+    playToAtomicActionCount(thresholdState,threshold - 1);
+    CollapseGoApplyResult thresholdTrigger = playNormal(thresholdState,8,8);
+    testAssert(thresholdTrigger.settlementTriggered);
+    testAssert(thresholdTrigger.settlementReason == CollapseGoSettlementReason::THRESHOLD);
+    testAssert(thresholdTrigger.atomicStateSnapshot.has_value());
+    const CollapseGoState& thresholdSnapshot = *thresholdTrigger.atomicStateSnapshot;
+    testAssert(thresholdSnapshot.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(thresholdSnapshot.getAtomicActionCount() == threshold);
+    testAssert(thresholdSnapshot.getConsecutivePasses() == 0);
+    assertNonDecisionSnapshotFailsClosed(thresholdSnapshot);
+
+    CollapseGoState earlyPassState(CollapseGoConfig::allOne(9));
+    playPass(earlyPassState);
+    CollapseGoApplyResult earlyPassTrigger = playPass(earlyPassState);
+    testAssert(earlyPassTrigger.settlementTriggered);
+    testAssert(earlyPassTrigger.settlementReason ==
+      CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(earlyPassTrigger.atomicStateSnapshot.has_value());
+    const CollapseGoState& earlyPassSnapshot = *earlyPassTrigger.atomicStateSnapshot;
+    testAssert(earlyPassSnapshot.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(earlyPassSnapshot.getAtomicActionCount() < threshold);
+    testAssert(earlyPassSnapshot.getConsecutivePasses() == 2);
+    assertNonDecisionSnapshotFailsClosed(earlyPassSnapshot);
+
+    CollapseGoState scoringState(CollapseGoConfig::allOne(9));
+    enterOrdinaryPlay(scoringState);
+    playPass(scoringState);
+    CollapseGoApplyResult scoringTrigger = playPass(scoringState);
+    testAssert(scoringTrigger.terminalScoreEventEmitted);
+    testAssert(scoringTrigger.atomicStateSnapshot.has_value());
+    const CollapseGoState& scoringSnapshot = *scoringTrigger.atomicStateSnapshot;
+    testAssert(scoringSnapshot.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(scoringSnapshot.getConsecutivePasses() == 2);
+    testAssert(!scoringSnapshot.getScore().isScored);
+    assertNonDecisionSnapshotFailsClosed(scoringSnapshot);
+  }
+
+  // Initial masks use the fixed centered canvas, expose all funded families, and exhaustively match apply.
+  {
+    for(int boardSize: {9,13,19}) {
+      CollapseGoState state(CollapseGoConfig::allOne(boardSize));
+      CollapseGoLegalMask mask = assertLegalMaskMatchesApply(state);
+      testAssert(mask.count() == static_cast<size_t>(4 * boardSize * boardSize + 1));
+      testAssert(mask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+      for(GameActionKind kind: {
+        GameActionKind::NORMAL,
+        GameActionKind::IMMORTAL,
+        GameActionKind::DOUBLE_START,
+        GameActionKind::EIGHTWAY,
+      }) {
+        testAssert(mask.test(static_cast<size_t>(actionIdAt(kind,boardSize,0,0))));
+        bool canvasCornerIsLegal = mask.test(static_cast<size_t>(
+          GameAction::fromCanvas(kind,0,0).getActionId()
+        ));
+        testAssert(canvasCornerIsLegal == (boardSize == 19));
+      }
+    }
+
+    CollapseGoState exhausted(CollapseGoConfig::allZero(13));
+    CollapseGoLegalMask exhaustedMask = assertLegalMaskMatchesApply(exhausted);
+    testAssert(exhaustedMask.count() == 13 * 13 + 1);
+    testAssert(exhaustedMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,13,6,6
+    ))));
+    for(GameActionKind kind: {
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!exhaustedMask.test(static_cast<size_t>(actionIdAt(kind,13,6,6))));
+  }
+
+  // Pending Double masks on every supported size contain only legal NORMAL continuations and PASS.
+  {
+    for(int boardSize: {9,13,19}) {
+      CollapseGoState state(CollapseGoConfig::allOne(boardSize));
+      int center = boardSize / 2;
+      playDoubleStart(state,center,center);
+      CollapseGoLegalMask mask = assertLegalMaskMatchesApply(state);
+      testAssert(mask.count() == static_cast<size_t>(boardSize * boardSize));
+      testAssert(mask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+      testAssert(!mask.test(static_cast<size_t>(actionIdAt(
+        GameActionKind::NORMAL,boardSize,center,center
+      ))));
+      testAssert(mask.test(static_cast<size_t>(actionIdAt(
+        GameActionKind::NORMAL,boardSize,0,0
+      ))));
+      for(GameActionKind kind: {
+        GameActionKind::IMMORTAL,
+        GameActionKind::DOUBLE_START,
+        GameActionKind::EIGHTWAY,
+      })
+        testAssert(!mask.test(static_cast<size_t>(actionIdAt(kind,boardSize,0,0))));
+    }
+  }
+
+  // The T-2, T-1, and pending-T continuation boundaries derive exact Double threshold legality.
+  {
+    CollapseGoState beforeDoubleBoundary(CollapseGoConfig::allOne(9));
+    const int threshold = beforeDoubleBoundary.getConfig().getThreshold();
+    playToAtomicActionCount(beforeDoubleBoundary,threshold - 2);
+    CollapseGoLegalMask beforeMask = assertLegalMaskMatchesApply(beforeDoubleBoundary);
+    testAssert(beforeMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::DOUBLE_START,9,8,8
+    ))));
+
+    CollapseGoState tooLate(beforeDoubleBoundary);
+    playNormal(tooLate,8,8);
+    testAssert(tooLate.getAtomicActionCount() == threshold - 1);
+    CollapseGoLegalMask tooLateMask = assertLegalMaskMatchesApply(tooLate);
+    testAssert(!tooLateMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::DOUBLE_START,9,7,8
+    ))));
+    testAssert(tooLateMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::IMMORTAL,9,7,8
+    ))));
+    testAssert(tooLateMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::EIGHTWAY,9,7,8
+    ))));
+
+    CollapseGoState pendingAtThreshold(beforeDoubleBoundary);
+    playDoubleStart(pendingAtThreshold,8,8);
+    testAssert(pendingAtThreshold.getAtomicActionCount() == threshold - 1);
+    CollapseGoLegalMask pendingMask = assertLegalMaskMatchesApply(pendingAtThreshold);
+    testAssert(pendingMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,9,7,8
+    ))));
+    testAssert(pendingMask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+    for(GameActionKind kind: {
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!pendingMask.test(static_cast<size_t>(actionIdAt(kind,9,7,8))));
+  }
+
+  // Ordinary play exposes only NORMAL and PASS, while terminal derivation is exactly all false.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    enterOrdinaryPlay(state);
+    CollapseGoLegalMask ordinaryMask = assertLegalMaskMatchesApply(state);
+    testAssert(ordinaryMask.count() == 9 * 9 + 1);
+    testAssert(ordinaryMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,9,4,4
+    ))));
+    for(GameActionKind kind: {
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!ordinaryMask.test(static_cast<size_t>(actionIdAt(kind,9,4,4))));
+
+    playPass(state);
+    CollapseGoLegalMask onePassMask = assertLegalMaskMatchesApply(state);
+    testAssert(onePassMask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+    CollapseGoApplyResult terminalPass = playPass(state);
+    testAssert(terminalPass.terminalScoreEventEmitted);
+    CollapseGoLegalMask terminalMask = assertLegalMaskMatchesApply(state);
+    testAssert(terminalMask.none());
+  }
+
+  // Family-specific survival and occupancy-only PSK decisions are reflected at every action ID.
+  {
+    CollapseGoState suicide(CollapseGoConfig::allOne(9));
+    playNormal(suicide,8,8); playNormal(suicide,1,2);
+    playNormal(suicide,8,7); playNormal(suicide,3,2);
+    playNormal(suicide,7,8); playNormal(suicide,2,1);
+    playNormal(suicide,7,7); playNormal(suicide,2,3);
+    CollapseGoLegalMask suicideMask = assertLegalMaskMatchesApply(suicide);
+    testAssert(!suicideMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,9,2,2
+    ))));
+    testAssert(!suicideMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::DOUBLE_START,9,2,2
+    ))));
+    testAssert(suicideMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::IMMORTAL,9,2,2
+    ))));
+    testAssert(suicideMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::EIGHTWAY,9,2,2
+    ))));
+
+    CollapseGoState psk(CollapseGoConfig::allOne(9));
+    playNormal(psk,1,2); playNormal(psk,1,1);
+    playNormal(psk,3,2); playNormal(psk,3,1);
+    playNormal(psk,2,3); playNormal(psk,2,0);
+    playNormal(psk,8,8); playNormal(psk,2,2);
+    playNormal(psk,2,1);
+    CollapseGoLegalMask pskMask = assertLegalMaskMatchesApply(psk);
+    for(GameActionKind kind: {
+      GameActionKind::NORMAL,
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!pskMask.test(static_cast<size_t>(actionIdAt(kind,9,2,2))));
+  }
+
+  // Immortal protection and live Eightway capture states retain exact derived legality.
+  {
+    CollapseGoState immortal(CollapseGoConfig::allOne(19));
+    playImmortalTrueEyePrefix(immortal);
+    CollapseGoLegalMask beforeImmortal = assertLegalMaskMatchesApply(immortal);
+    testAssert(!beforeImmortal.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,19,9,9
+    ))));
+    testAssert(beforeImmortal.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::IMMORTAL,19,9,9
+    ))));
+    testAssert(!beforeImmortal.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::DOUBLE_START,19,9,9
+    ))));
+    testAssert(!beforeImmortal.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::EIGHTWAY,19,9,9
+    ))));
+    playImmortal(immortal,9,9);
+    CollapseGoLegalMask armedImmortal = assertLegalMaskMatchesApply(immortal);
+    for(GameActionKind kind: {
+      GameActionKind::NORMAL,
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!armedImmortal.test(static_cast<size_t>(actionIdAt(kind,19,9,9))));
+
+    CollapseGoConfig captureConfig(9,CollapseGoQuotas(0,0,1),CollapseGoQuotas());
+    CollapseGoState eightwayCapture(captureConfig);
+    playEightway(eightwayCapture,4,4);
+    const pair<int,int> ring[8] = {
+      {3,3},{4,3},{5,3},{3,4},{5,4},{3,5},{4,5},{5,5},
+    };
+    for(int index = 0; index < 7; index++) {
+      playNormal(eightwayCapture,ring[index].first,ring[index].second);
+      playNormal(eightwayCapture,index,8);
+    }
+    CollapseGoLegalMask beforeCapture = assertLegalMaskMatchesApply(eightwayCapture);
+    testAssert(beforeCapture.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,9,ring[7].first,ring[7].second
+    ))));
+    CollapseGoApplyResult capture = playNormal(
+      eightwayCapture,ring[7].first,ring[7].second
+    );
+    testAssert(capture.capturedStones == vector<Loc>({Location::getLoc(4,4,9)}));
+    testAssert(eightwayCapture.getLedger().at(0).stoneState ==
+      CollapseGoLedgerStoneState::CAPTURED);
+    assertLegalMaskMatchesApply(eightwayCapture);
+  }
+
+  // Active Immortal/Eightway topology and full PSK legality transform equivariantly under all D4 maps.
+  {
+    ImmortalD4Episode referenceEpisode = runEightwayD4Episode(0);
+    CollapseGoLegalMask referenceMask = assertLegalMaskMatchesApply(
+      referenceEpisode.placementState
+    );
+    assertD4LegalMask(referenceMask,referenceMask,0);
+    for(int symmetry = 1; symmetry < 8; symmetry++) {
+      ImmortalD4Episode transformedEpisode = runEightwayD4Episode(symmetry);
+      CollapseGoLegalMask transformedMask = assertLegalMaskMatchesApply(
+        transformedEpisode.placementState
+      );
+      assertD4LegalMask(referenceMask,transformedMask,symmetry);
+      assertD4LegalMask(
+        transformedMask,referenceMask,GameAction::inverseSymmetry(symmetry)
+      );
+    }
   }
 
   // Copy-then-commit preserves the original exact state while the copy advances independently.

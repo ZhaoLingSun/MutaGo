@@ -1,5 +1,6 @@
 """Independent Collapse Go reference-oracle components."""
 
+from .action_legality import derive_legal_mask, enumerate_action_legality
 from .normal_pass_oracle import (
     ACTION_SCHEMA_VERSION,
     CANVAS_SIZE,
@@ -87,6 +88,8 @@ __all__ = [
     "UnsupportedSliceAction",
     "apply_action",
     "decode_action_v1",
+    "derive_legal_mask",
+    "enumerate_action_legality",
     "new_game",
     "scan_mixed_groups",
     "scan_n4_groups",

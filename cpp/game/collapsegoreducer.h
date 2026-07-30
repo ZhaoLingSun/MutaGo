@@ -1,6 +1,7 @@
 #ifndef GAME_COLLAPSEGOREDUCER_H_
 #define GAME_COLLAPSEGOREDUCER_H_
 
+#include <bitset>
 #include <optional>
 #include <string>
 #include <vector>
@@ -71,23 +72,29 @@ struct CollapseGoApplyResult {
   std::string getErrorCode() const;
 };
 
+using CollapseGoLegalMask = std::bitset<GameAction::FLAT_ACTION_COUNT>;
+
 class CollapseGoReducer {
 public:
+  [[nodiscard]] static CollapseGoLegalMask deriveLegalMask(const CollapseGoState& state);
   static CollapseGoApplyResult apply(CollapseGoState& state, Player actor, const GameAction& action);
 
 private:
+  struct LegalityContext;
+  struct PreparedPlacement;
+  struct PreparedAction;
+
   static CollapseGoApplyResult reject(CollapseGoApplyError error);
   static CollapseGoAbility abilityForAction(GameActionKind kind);
+  static LegalityContext buildLegalityContext(const CollapseGoState& state);
+  static PreparedAction prepareAction(
+    const CollapseGoState& state,
+    const LegalityContext& context,
+    Player actor,
+    const GameAction& action
+  );
   static void appendOccupancy(CollapseGoState& state, const std::vector<uint8_t>& occupancy);
   static void appendCurrentOccupancy(CollapseGoState& state);
-  static CollapseGoApplyError simulatePlacement(
-    const CollapseGoState& committedState,
-    CollapseGoState& candidate,
-    int point,
-    Player actor,
-    const CollapseGoStoneSource& source,
-    std::vector<int>& capturedPoints
-  );
   static void markCapturedSpecialSources(
     CollapseGoState& state,
     const CollapseGoPosition& previousPosition,
