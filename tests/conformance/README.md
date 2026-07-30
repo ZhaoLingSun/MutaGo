@@ -1,6 +1,6 @@
 # 一致性测试
 
-本目录用于 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录保留明确标为 **UNFROZEN v0、仅测试排练** 的 NORMAL/PASS C++ JSONL probe 与 Python 差分驱动，并提供与旧模式严格分离的 **UNFROZEN Double Increment 1**、**UNFROZEN Immortal Increment 2** 和 **UNFROZEN Eightway Increment 3** 测试载体。四种协议都不是生产协议、百万动作夹具、门槛报告或 CI 配置。
+本目录用于 C++ 生产权威实现与独立 Python 参考实现之间的确定性一致性和差分测试。M0 已在 `tests/contracts/` 提供可执行合同示例与测试；本目录保留明确标为 **UNFROZEN v0、仅测试排练** 的 NORMAL/PASS C++ JSONL probe 与 Python 差分驱动，并提供与旧模式严格分离的 **UNFROZEN Double Increment 1**、**UNFROZEN Immortal Increment 2**、**UNFROZEN Eightway Increment 3** 和 **UNFROZEN Full-rule Diff v4** 测试载体。五种协议都不是生产协议、百万动作夹具、门槛报告或 CI 配置。
 
 ## 文档状态
 
@@ -23,7 +23,7 @@
 `../../python/mutago/collapse_go/normal_pass_oracle.py` 是独立、仅使用 Python 标准库的慢速参考切片。当前范围包括：
 
 - Action V1 关闭式 envelope 的严格解码，以及 9×9、13×13、19×19 居中 footprint；
-- 底层 `OracleConfig` / `PlayerQuotas` 接受满足状态一致性与配额守恒的非负 JSON-safe 整数；外部测试载体刻意更窄：legacy v0 只暴露 `quotaMode=ZERO/ONE`，Double Increment 1、Immortal Increment 2 与 Eightway Increment 3 的 `initialQuotas` 每个分量分别只允许 `0..4`；这四个 carrier 范围都不能倒推为 oracle 的配额域；
+- 底层 `OracleConfig` / `PlayerQuotas` 接受满足状态一致性与配额守恒的非负 JSON-safe 整数；外部测试载体刻意更窄：legacy v0 只暴露 `quotaMode=ZERO/ONE`，Double Increment 1、Immortal Increment 2、Eightway Increment 3 与 Full-rule Diff v4 的 `initialQuotas` 每个分量分别只允许 `0..4`；这五个 carrier 范围都不能倒推为 oracle 的配额域；
 - `NORMAL` 的全盘 N4 棋块/气重建、同时提走全部对方零气棋块、自杀与 occupancy-only PSK；
 - `PASS` 的 PSK 拒绝豁免、重复稳定占据追加、阈值或阈值前双停着触发的空账本 settlement；
 - `DOUBLE_START` 的独立 N4 起手事务、同方 `NORMAL` / `PASS` 续着、pending linkage、来源身份、逐玩家配额、append-only tombstone 账本、被提 Double source、全局 newest-to-oldest no-op settlement pop，以及 revision/log/PSK/terminal 计数公式；
@@ -207,6 +207,40 @@ python3 tests/conformance/eightway_differential.py \
 
 该载体没有完整 runtime legal-mask API、管理终止、权威 JSON event-log replay、生产持久化、搜索、自博弈、训练、Gateway/Web 或其他产品接入证据；也不声称 `GATE-RULE-1M`、`GATE-PROD`、发布审计或任何正式发布条件已经通过。项目保持 **AUDIT-BLOCKED**。
 
+## Full-rule Diff v4 一致性载体：UNFROZEN，仅测试
+
+第五个独立模式使用协议字面值 `full-rule-diff-v4-unfrozen`。`full_rule_differential.py` 是与 `eightway_differential.py` 分离的测试驱动，不修改 v3 源码、测试、全局常量、默认摘要或固定 digest。v4 通过显式 adapter 复用 checkout-pinned v3 的官方夹具、curated/random 动作序列、状态与 transition 投影、严格合同校验、受限 JSON canonical profile、单一绝对 deadline、进程组监管、stdout/stderr/frame 上限、失败上下文、D4 基础序列以及前缀/后缀重执行检查；adapter 只转换协议字面值，不修改 v3 模块全局状态。v4 transcript SHA-256 继续使用 v3 的“manifest、每条 canonical request、每条 canonical response 分别以 8 字节大端长度加内容”记录方式，但 v4 transcript 因协议和响应字段增加而拥有独立摘要。
+
+请求关闭式形状与 v3 完全相同，唯一差异是 `protocolVersion=full-rule-diff-v4-unfrozen`。响应也与 v3 完全相同，唯一增加字段是 `initialState.legalActionRanges` 和每个 `observations[i].state.legalActionRanges`。这些状态都是玩家可见的稳定初始或候选后状态；`atomicSnapshot`、`atomicEvent`、settlement step、`removalBatches`、`terminalEvent` 以及计分前 atomic snapshot 均不得携带合法性。严格 adapter 递归拒绝任何遗漏或越位的同名字段，只从上述允许路径移除合法性，把 v4 协议翻译回 v3，然后委托 v3 的完整关闭式 shape、状态不变量、atomic lineage、settlement、终局和投影验证，因此未知位置不能因 adapter strip 而逃过检查。
+
+Python 预期在每个 episode 初态和每个候选后的稳定状态都分别调用 `enumerate_action_legality` 与 `derive_legal_mask`。前者的 1,445 个拒绝码通过 `code is None` 转为 bool，后者必须返回恰好 1,445 个真实 bool；两者逐位完全一致后才生成期望。驱动不会通过对 1,445 个动作逐一调用 reducer、调用 C++ 或读取 C++ mask 来构造 Python 预期；episode 自身每一步仍只执行该步的单个候选动作。true bits 采用唯一极大闭区间压缩。解析器要求每个 range 恰含整数 `first`、`last`，明确拒绝 bool、越界 `0..1444`、逆序、重叠、乱序、相邻但未合并区间和任何未知字段；它先展开双方全部 1,445 bits 并比较，再进入通用响应比较。首个差异报告确切 `actionId`、Python/C++ bool、manifest、canonical request 和截至该稳定状态的动作前缀。
+
+D4 对合法性先展开 1,445 bits，在固定完整 19×19 画布上分别置换四个 361-action family，保持 family 不变并固定 `PASS=1444`，最后重新极大压缩。测试覆盖全部八种变换、inverse、独立重执行、官方夹具 literal binding，以及 placement/mixed-protection/pre-trigger/full-settlement/post-settlement suffix 的不可变前缀。官方 v3 夹具和 `c644dd9c6fb65cc3472f1f6764b168d4d0aaac5f8af37691a2cc7e5b90929182` legal-range digest 保持不变；本任务不修改 M0 Schema 或合同夹具。
+
+v4 默认继续使用 v3 seed `mutago-eightway-increment-3`，curated 动作序列完全相同，纯随机默认取该确定性 v3 stream 的前 64 个候选，以便在既有 180 秒总 deadline 内对每个稳定状态调用两项公开 Python legality API 并校验其 1,445-entry 视图一致性。CLI 仍提供显式 `--probe`、`--seed`、`--candidate-count`；可执行集成测试使用独立环境变量 `MUTAGO_COLLAPSE_FULL_RULE_PROBE`。纯 Python 测试覆盖 range canonicality、stable-only placement、全位差异诊断、Python 预期相对 C++/生产 reducer 的独立性、D4/inverse、夹具绑定与重执行、资源/deadline、v3 corpus adapter 和长度前缀 digest framing。opt-in 可执行测试另覆盖 hostile raw frames、v0/v1/v2/v3/v4 混合 stream 与官方夹具。v4 默认 manifest 的 504 个 curated 加 64 个纯随机候选共 568 个候选、49 个 episode，结果为 524 accepted、44 rejected、0 unsupported；每个 episode 初态与每个候选后状态共比较 617 个稳定状态，即 891,565 个 C++/Python legal bits。经两次独立完整运行复核的 transcript SHA-256 固定为 `9df79d33e0e38593091d4ead82e1fac08d013f93c19d4c18f94e365eb6809596`。这只固定当前有界 v4 测试 transcript；历史 v0/v1/v2/v3 digest 与对应测试保持不变。
+
+从仓库根目录运行纯 Python 测试：
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error PYTHONPATH=python \
+python3 -m unittest -v tests/conformance/test_full_rule_differential.py
+```
+
+可执行文件构建完成后运行 opt-in 集成与 CLI：
+
+```bash
+MUTAGO_COLLAPSE_FULL_RULE_PROBE="$BUILD_DIR/mutago-collapse-slice-probe" \
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error PYTHONPATH=python \
+python3 -m unittest -v tests/conformance/test_full_rule_differential.py
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONWARNINGS=error PYTHONPATH=python \
+python3 tests/conformance/full_rule_differential.py \
+  --probe "$BUILD_DIR/mutago-collapse-slice-probe" \
+  --seed mutago-eightway-increment-3 --candidate-count 64
+```
+
+成功摘要明确包含 `scope=FULL_RULE_DIFF_V4_UNFROZEN_TEST_ONLY`、`unfrozenTestOnly=true`、`gateRule1MClaimed=false` 和 `gateProdClaimed=false`。该载体比较每个稳定状态的完整 1,445 位合法性，但默认候选数不是一百万，未覆盖管理终止、权威日志 replay、生产持久化、undo/redo API、sanitizer、搜索、模型、数据 producer、Gateway/Web、来源或发行审计，因此绝不构成 `GATE-RULE-1M` 或 `GATE-PROD` 声明，项目仍为 **AUDIT-BLOCKED**。
+
 ## 必测冻结契约
 
 ### Typed action 与 ABI
@@ -286,3 +320,5 @@ A separate test-only protocol literal, `double-move-diff-v1-unfrozen`, provides 
 A third, separately versioned test-only protocol literal, `immortal-diff-v2-unfrozen`, adds NORMAL/PASS/DOUBLE_START/IMMORTAL without widening v0 or v1. Eightway pre-mechanics errors retain their historical codes, while accepted, SUICIDE, and POSITIONAL_SUPERKO mechanics outcomes map to `UNSUPPORTED_BY_SLICE` with exact rollback. The v2 projection includes source-aware atomic snapshots, current/final states, dynamic protected N4 groups and anchors, all quota buckets, append-only ledger lifecycle, captures, complete ordered PSK, full settlement source/disposition/removal traces, terminal/score, and exact counters. Its official 19x19 true-eye fixture binds action 17 protection, action 19 atomic occupancy, the point-180 removal pop, final `19/19/20` counters, PSK length 21, WHITE ordinary handoff, and settled tombstone lifecycle while keeping `descriptor: null` and the public hash unchanged. The literal fixture legal ranges are drift-pinned by SHA-256 `e2e1681d2a80320a5ea8addbb95d786dd669614ee0a472bb6871c61a36877271`, including fixture-only frozen-N8 evidence for `EIGHTWAY#1263` after actions 8/10/12/14, and are not compared as a runtime 1,445-bit mask. All eight D4 transforms and inverses run on the same legal protection/removal episode at 9x9, 13x13, and 19x19, including actions, source/group/anchor/capture/ledger/removal/stable occupancy/complete-PSK fields. Deterministic re-execution fixes armed, pre-trigger, settlement, and ordinary suffix prefixes; it is not production event-log replay, checkpoint recovery, persistence, or public undo/redo. The pinned default manifest has 671 curated plus 256 random candidates (927 total across 46 episodes), with 745 accepted, 175 rejected, 7 unsupported, and transcript SHA-256 `a2f7cb99bcbbb4c3d9d17e79aa7796ea4bc247cad049a515770f7c24f65e6d0b`. Exact error counts are `NONE=745`, `WRONG_ACTOR=20`, `INVALID_PHASE=14`, `POINT_OFF_BOARD=81`, `POINT_OCCUPIED=9`, `QUOTA_EXHAUSTED=14`, `DOUBLE_CONTINUATION_KIND_FORBIDDEN=9`, `POSITIONAL_SUPERKO=1`, `TERMINAL_STATE=27`, and `UNSUPPORTED_BY_SLICE=7`; settlement counts are `NONE=889`, `PRE_THRESHOLD_TWO_PASSES=37`, and `THRESHOLD=1`. This evidence makes no full legal-mask, Eightway, product, persistence, `GATE-RULE-1M`, `GATE-PROD`, or release claim, and does not remove the repository's audit block.
 
 A fourth independent test-only protocol, `eightway-diff-v3-unfrozen`, supports NORMAL/PASS/DOUBLE_START/IMMORTAL/EIGHTWAY and forbids `UNSUPPORTED` once the closed request is decidable. Its state and atomic snapshots project both anchor sets, exact mixed groups/liberties/protection, sources, ledger/quota lifecycle, captures, complete PSK, counters, settlement pops/removal batches, handoff, and terminal scoring. The Python driver independently reconstructs mixed connectivity, N4/N8 liberty unions, protection, fixed-point closure, score, triggers, atomic lineage, and PSK/source/ledger/quota progression without calling C++ replay, checkpoints, undo, or a production legal-mask API. The official descriptor-null 19x19 fixture `contract-eightway-immortal-split` binds a mixed I/E group, action-before-settlement state, reverse E/I pops, point-180 split/removal, final `10/10/12` counters, PSK length 13, and BLACK ordinary handoff; its fixture-only legal-range digest is `c644dd9c6fb65cc3472f1f6764b168d4d0aaac5f8af37691a2cc7e5b90929182`. Rich asymmetric D4 and inverse checks cover actions, sources, both anchor sets, mixed groups, captures, ledger, batches, stable snapshots, and complete PSK on 9x9, 13x13, and 19x19. Reachable cases cover N8-only liberty, endpoint/shoulder/color separation, liberty deduplication, Immortal propagation through E, E split, captured-pending no-op, action T, E capture/PSK rollback, global I/D/E order, newer Immortal capture of an older E source, quotas above one, and rejection precedence. Constructor-valid synthetic robustness cases are labeled separately and do not claim reachable nonempty multi-wave or both-color removal. The default 504 curated plus 256 random candidates produce 582 accepted, 178 rejected, zero unsupported, and transcript SHA-256 `fa3ffd3afb4cec03c855d23d9f27ae0e16081fc1c4bc3eb101085fb7dbc0e6f1`. The carrier has no full runtime legal-mask API, management termination, authoritative event-log replay, persistence, search, self-play, training, Gateway/Web, or product evidence, and makes no `GATE-RULE-1M`, `GATE-PROD`, release, or audit-completion claim.
+
+A fifth separate test-only protocol, `full-rule-diff-v4-unfrozen`, adds top-level `legalActionRanges` only to `initialState` and every post-candidate `observations[].state`; every other request and response field remains the v3 shape. The dedicated Python driver explicitly adapts checkout-pinned v3 fixture, corpus, projection, canonical JSON, process supervision, resource limits, deadline, D4, and re-execution helpers without mutating v3 globals or historical digests. For every stable state it calls both `enumerate_action_legality` and `derive_legal_mask`, requires exact agreement across all 1,445 entries, and maximally compresses true bits without sweeping all actions through the reducer or using C++ output as the Python expectation. Ranges are closed and canonical: `first`/`last` are real integers in 0..1444, booleans and unknown fields are rejected, and ranges must be ordered, nonoverlapping, nonadjacent, and maximal. Validation expands and compares all 1,445 bits before generic v3 response validation and reports the first differing action ID with the manifest, canonical request, and exact action prefix. The strict adapter rejects legality at atomic snapshots/events, settlement steps or batches, terminal events, pre-scoring snapshots, and all other paths before stripping only the permitted stable-state fields and delegating the rest to v3. D4 permutes each full-canvas 361-action family independently, fixes PASS 1444, recompresses, and checks all inverses plus fixture prefix/suffix re-execution. The default reuses the v3 seed and curated sequences with the first 64 deterministic random candidates under the existing 180-second deadline. `MUTAGO_COLLAPSE_FULL_RULE_PROBE` enables opt-in executable tests for the official fixture, hostile frames, and mixed v0-v4 streams. The bounded default contains 504 curated plus 64 random candidates across 49 episodes, producing 524 accepted, 44 rejected, zero unsupported, and 617 stable-state mask comparisons (891,565 C++/Python legal-bit comparisons). Two independent complete executions pin the v4 transcript SHA-256 to `9df79d33e0e38593091d4ead82e1fac08d013f93c19d4c18f94e365eb6809596`; all historical pins remain unchanged. Successful summaries are explicitly `FULL_RULE_DIFF_V4_UNFROZEN_TEST_ONLY` with `unfrozenTestOnly=true`, `gateRule1MClaimed=false`, and `gateProdClaimed=false`. No M0 schema or contract fixture is changed, and this carrier makes no rule-gate, production-gate, release, or audit-completion claim.
