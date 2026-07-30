@@ -27,6 +27,8 @@ from tools.contract.contract import (
     VECTOR_DIR,
     ContractError,
     SchemaCatalog,
+    _contract_mixed_groups,
+    _occupancy_sets,
     _validate_fixture,
     _validate_mismatch_bundle,
     _validate_mismatch_reproduction_segment,
@@ -34,6 +36,7 @@ from tools.contract.contract import (
     _validate_projection,
     _validate_projection_from_previous,
     _validate_projection_with_predecessor,
+    _validate_settlement_closure,
     action_canvas_coordinates,
     canonicalize_json_bytes,
     decode_action,
@@ -457,6 +460,281 @@ class FixtureAndMismatchInvariantTests(unittest.TestCase):
         cls.digest = validate_descriptor(load_json(DESCRIPTOR_PATH), cls.catalog)
         cls.fixture = load_json(EXAMPLE_DIR / "conformance-fixture-v1.example.json")
         cls.double_fixture = load_json(EXAMPLE_DIR / "conformance-fixture-double-settlement-v1.example.json")
+        cls.immortal_fixture = load_json(
+            EXAMPLE_DIR
+            / "conformance-fixture-immortal-true-eye-settlement-v1.example.json"
+        )
+
+    def _mixed_topology_projection(self, *, settled: bool = False) -> dict[str, object]:
+        projection = load_json(EXAMPLE_DIR / "semantic-projection-v1.example.json")
+        projection["fixtureId"] = (
+            "contract-mixed-topology-settled" if settled else "contract-mixed-topology-armed"
+        )
+        state = projection["state"]
+        occupancy = {"black": [0, 10, 29, 30, 40], "white": []}
+        state["boardSize"] = 9
+        state["threshold"] = 34
+        state["revision"] = 5
+        state["atomicActionCount"] = 5
+        state["logPosition"] = 7 if settled else 5
+        state["occupancy"] = copy.deepcopy(occupancy)
+        state["stones"] = [
+            {"point": 0, "color": "BLACK", "originActionNumber": 4, "sourceId": "stone-4", "originKind": "NORMAL", "specialEventId": None},
+            {"point": 10, "color": "BLACK", "originActionNumber": 5, "sourceId": "stone-5", "originKind": "NORMAL", "specialEventId": None},
+            {"point": 29, "color": "BLACK", "originActionNumber": 3, "sourceId": "stone-3", "originKind": "IMMORTAL", "specialEventId": "special-3"},
+            {"point": 30, "color": "BLACK", "originActionNumber": 2, "sourceId": "stone-2", "originKind": "NORMAL", "specialEventId": None},
+            {"point": 40, "color": "BLACK", "originActionNumber": 1, "sourceId": "stone-1", "originKind": "EIGHTWAY", "specialEventId": "special-1"},
+        ]
+        state["actor"] = "WHITE"
+        state["phase"] = "ORDINARY_PLAY" if settled else "COLLAPSE_PLAY"
+        state["settlementCompleted"] = settled
+        state["pendingDouble"] = None
+        state["usedQuotas"]["BLACK"] = {
+            "IMMORTAL": 1,
+            "DOUBLE_START": 0,
+            "EIGHTWAY": 1,
+        }
+        if settled:
+            zero = {"IMMORTAL": 0, "DOUBLE_START": 0, "EIGHTWAY": 0}
+            state["remainingQuotas"] = {"BLACK": copy.deepcopy(zero), "WHITE": copy.deepcopy(zero)}
+            state["expiredQuotas"] = {
+                "BLACK": {"IMMORTAL": 0, "DOUBLE_START": 1, "EIGHTWAY": 0},
+                "WHITE": {"IMMORTAL": 1, "DOUBLE_START": 1, "EIGHTWAY": 1},
+            }
+        else:
+            state["remainingQuotas"]["BLACK"] = {
+                "IMMORTAL": 0,
+                "DOUBLE_START": 1,
+                "EIGHTWAY": 0,
+            }
+        state["ledger"] = [
+            {
+                "eventId": "special-1",
+                "logicalOrder": 0,
+                "owner": "BLACK",
+                "kind": "EIGHTWAY",
+                "sourcePoint": 40,
+                "sourceStoneId": "stone-1",
+                "abilityState": "INACTIVE" if settled else "ARMED",
+                "stoneState": "ON_BOARD",
+                "settlementState": "SETTLED" if settled else "PENDING",
+                "tombstone": settled,
+            },
+            {
+                "eventId": "special-3",
+                "logicalOrder": 2,
+                "owner": "BLACK",
+                "kind": "IMMORTAL",
+                "sourcePoint": 29,
+                "sourceStoneId": "stone-3",
+                "abilityState": "INACTIVE" if settled else "ARMED",
+                "stoneState": "ON_BOARD",
+                "settlementState": "SETTLED" if settled else "PENDING",
+                "tombstone": settled,
+            },
+        ]
+        state["pskHistory"] = [{"black": [], "white": []}] + [
+            copy.deepcopy(occupancy) for _ in range(state["logPosition"])
+        ]
+        projection["derived"]["legalActionRanges"] = [
+            {"first": PASS_ACTION_ID, "last": PASS_ACTION_ID}
+        ]
+        ordinary_groups = [
+            {
+                "color": "BLACK",
+                "stones": [0],
+                "liberties": [1, 9],
+                "protected": False,
+                "immortalAnchors": [],
+                "eightwayAnchors": [],
+            },
+            {
+                "color": "BLACK",
+                "stones": [10],
+                "liberties": [1, 9, 11, 19],
+                "protected": False,
+                "immortalAnchors": [],
+                "eightwayAnchors": [],
+            },
+        ]
+        if settled:
+            ordinary_groups.extend(
+                [
+                    {
+                        "color": "BLACK",
+                        "stones": [29, 30],
+                        "liberties": [20, 21, 28, 31, 38, 39],
+                        "protected": False,
+                        "immortalAnchors": [],
+                        "eightwayAnchors": [],
+                    },
+                    {
+                        "color": "BLACK",
+                        "stones": [40],
+                        "liberties": [31, 39, 41, 49],
+                        "protected": False,
+                        "immortalAnchors": [],
+                        "eightwayAnchors": [],
+                    },
+                ]
+            )
+        else:
+            ordinary_groups.append(
+                {
+                    "color": "BLACK",
+                    "stones": [29, 30, 40],
+                    "liberties": [20, 21, 28, 31, 32, 38, 39, 41, 48, 49, 50],
+                    "protected": True,
+                    "immortalAnchors": [29],
+                    "eightwayAnchors": [40],
+                }
+            )
+        projection["debug"]["groups"] = ordinary_groups
+        return projection
+
+    def test_mixed_n4_n8_topology_is_recomputed_from_armed_anchors(self) -> None:
+        armed = self._mixed_topology_projection()
+        _validate_projection(armed, self.catalog, self.digest)
+        mixed = armed["debug"]["groups"][-1]
+        self.assertEqual([29, 30, 40], mixed["stones"])
+        self.assertEqual([29], mixed["immortalAnchors"])
+        self.assertEqual([40], mixed["eightwayAnchors"])
+        self.assertTrue(mixed["protected"])
+        self.assertIn(32, mixed["liberties"])
+        self.assertNotIn(22, mixed["liberties"])
+
+        mutations = []
+        false_ordinary_diagonal = copy.deepcopy(armed)
+        false_ordinary_diagonal["debug"]["groups"] = [
+            {
+                "color": "BLACK",
+                "stones": [0, 10],
+                "liberties": [1, 9, 11, 19],
+                "protected": False,
+                "immortalAnchors": [],
+                "eightwayAnchors": [],
+            },
+            copy.deepcopy(armed["debug"]["groups"][-1]),
+        ]
+        mutations.append(("false-ordinary-diagonal-edge", false_ordinary_diagonal))
+
+        missing_n8_liberty = copy.deepcopy(armed)
+        missing_n8_liberty["debug"]["groups"][-1]["liberties"].remove(32)
+        mutations.append(("missing-n8-liberty", missing_n8_liberty))
+
+        ordinary_n8_interface = copy.deepcopy(armed)
+        ordinary_n8_interface["debug"]["groups"][-1]["liberties"].append(22)
+        ordinary_n8_interface["debug"]["groups"][-1]["liberties"].sort()
+        mutations.append(("ordinary-endpoint-false-n8-liberty", ordinary_n8_interface))
+
+        asymmetric_edge = copy.deepcopy(armed)
+        asymmetric_edge["debug"]["groups"] = copy.deepcopy(
+            armed["debug"]["groups"][:2]
+        ) + [
+            {
+                "color": "BLACK",
+                "stones": [29, 30],
+                "liberties": [20, 21, 28, 31, 38, 39],
+                "protected": True,
+                "immortalAnchors": [29],
+                "eightwayAnchors": [],
+            },
+            {
+                "color": "BLACK",
+                "stones": [40],
+                "liberties": [31, 32, 39, 41, 48, 49, 50],
+                "protected": False,
+                "immortalAnchors": [],
+                "eightwayAnchors": [40],
+            },
+        ]
+        mutations.append(("asymmetric-anchor-edge", asymmetric_edge))
+
+        lost_protection = copy.deepcopy(armed)
+        lost_protection["debug"]["groups"][-1]["protected"] = False
+        mutations.append(("lost-protection-propagation", lost_protection))
+
+        for label, projection in mutations:
+            with self.subTest(label=label), self.assertRaises(ContractError) as caught:
+                _validate_projection(projection, self.catalog, self.digest)
+            self.assertEqual("semantic-invariant", caught.exception.code)
+
+        settled = self._mixed_topology_projection(settled=True)
+        _validate_projection(settled, self.catalog, self.digest)
+        stale_connection = copy.deepcopy(settled)
+        stale_connection["debug"]["groups"] = copy.deepcopy(
+            settled["debug"]["groups"][:2]
+        ) + [
+            {
+                "color": "BLACK",
+                "stones": [29, 30, 40],
+                "liberties": [20, 21, 28, 31, 38, 39, 41, 49],
+                "protected": False,
+                "immortalAnchors": [],
+                "eightwayAnchors": [],
+            }
+        ]
+        with self.assertRaises(ContractError) as caught:
+            _validate_projection(stale_connection, self.catalog, self.digest)
+        self.assertEqual("semantic-invariant", caught.exception.code)
+
+    def test_official_immortal_fixture_binds_true_eye_atomic_and_settlement_states(self) -> None:
+        fixture = self.immortal_fixture
+        self.assertIsNone(fixture["descriptor"])
+        self.assertEqual(
+            [
+                360, 161, 341, 179, 359, 181, 340, 199, 358, 160,
+                322, 162, 320, 198, 339, 200, 541, 1444, 1444,
+            ],
+            [step["candidate"]["action"]["actionId"] for step in fixture["steps"]],
+        )
+        armed = fixture["steps"][16]["expectedProjection"]
+        center_group = next(
+            group for group in armed["debug"]["groups"] if 180 in group["stones"]
+        )
+        self.assertEqual([], center_group["liberties"])
+        self.assertTrue(center_group["protected"])
+        self.assertEqual([180], center_group["immortalAnchors"])
+
+        final = fixture["steps"][18]["expectedProjection"]
+        atomic = final["transition"]["atomicEvent"]
+        self.assertIn(180, atomic["stableOccupancy"]["black"])
+        settlement_step = final["transition"]["settlement"]["steps"][0]
+        self.assertTrue(settlement_step["abilityDeactivated"])
+        self.assertFalse(settlement_step["noOp"])
+        self.assertEqual([{"black": [180], "white": []}], settlement_step["removalBatches"])
+        state = final["state"]
+        self.assertEqual((19, 19, 20), (
+            state["atomicActionCount"], state["revision"], state["logPosition"]
+        ))
+        self.assertEqual(21, len(state["pskHistory"]))
+        self.assertEqual(("WHITE", "ORDINARY_PLAY"), (state["actor"], state["phase"]))
+        self.assertEqual(
+            ("INACTIVE", "CAPTURED", "SETTLED", True),
+            (
+                state["ledger"][0]["abilityState"],
+                state["ledger"][0]["stoneState"],
+                state["ledger"][0]["settlementState"],
+                state["ledger"][0]["tombstone"],
+            ),
+        )
+        zero = {"IMMORTAL": 0, "DOUBLE_START": 0, "EIGHTWAY": 0}
+        self.assertEqual({"BLACK": zero, "WHITE": zero}, state["remainingQuotas"])
+        self.assertEqual(
+            {
+                "BLACK": {"IMMORTAL": 1, "DOUBLE_START": 0, "EIGHTWAY": 0},
+                "WHITE": zero,
+            },
+            state["usedQuotas"],
+        )
+        self.assertEqual(
+            {
+                "BLACK": {"IMMORTAL": 0, "DOUBLE_START": 1, "EIGHTWAY": 1},
+                "WHITE": {"IMMORTAL": 1, "DOUBLE_START": 1, "EIGHTWAY": 1},
+            },
+            state["expiredQuotas"],
+        )
+        _validate_fixture(fixture, self.catalog, self.digest)
 
     def _nonpublic_initial_fixture(
         self,
@@ -810,6 +1088,105 @@ class FixtureAndMismatchInvariantTests(unittest.TestCase):
                 settlement["steps"][0]["removalBatches"] = [{"black": [180], "white": []}]
             with self.subTest(mutate=mutate), self.assertRaises(ContractError):
                 _validate_fixture(broken, self.catalog, self.digest)
+
+    def test_settlement_closure_rejects_empty_healthy_and_split_batches(self) -> None:
+        empty_wave = copy.deepcopy(self.immortal_fixture)
+        empty_step = empty_wave["steps"][18]["expectedProjection"]["transition"][
+            "settlement"
+        ]["steps"][0]
+        empty_step["removalBatches"].insert(0, {"black": [], "white": []})
+        with self.assertRaises(ContractError) as caught:
+            _validate_fixture(empty_wave, self.catalog, self.digest)
+        self.assertEqual("semantic-invariant", caught.exception.code)
+
+        healthy_removal = copy.deepcopy(self.immortal_fixture)
+        final = healthy_removal["steps"][18]["expectedProjection"]
+        settlement_step = final["transition"]["settlement"]["steps"][0]
+        settlement_step["removalBatches"] = [{"black": [180, 320], "white": []}]
+        stable = copy.deepcopy(settlement_step["stableOccupancy"])
+        stable["black"].remove(320)
+        settlement_step["stableOccupancy"] = copy.deepcopy(stable)
+        final["state"]["occupancy"] = copy.deepcopy(stable)
+        final["state"]["stones"] = [
+            stone for stone in final["state"]["stones"] if stone["point"] != 320
+        ]
+        final["state"]["pskHistory"][settlement_step["pskHistoryIndex"]] = copy.deepcopy(
+            stable
+        )
+        final["debug"]["groups"] = _contract_mixed_groups(
+            _occupancy_sets(stable),
+            final["state"]["ledger"],
+            19,
+            require_stable=True,
+        )
+        with self.assertRaises(ContractError) as caught:
+            _validate_fixture(healthy_removal, self.catalog, self.digest)
+        self.assertEqual("semantic-invariant", caught.exception.code)
+
+        atomic = {"black": [0, 1], "white": [2, 9, 10]}
+        ledger = [
+            {
+                "eventId": "special-1",
+                "logicalOrder": 0,
+                "owner": "BLACK",
+                "kind": "IMMORTAL",
+                "sourcePoint": 0,
+                "sourceStoneId": "stone-1",
+                "abilityState": "ARMED",
+                "stoneState": "ON_BOARD",
+                "settlementState": "PENDING",
+                "tombstone": False,
+            }
+        ]
+        split_settlement = {
+            "triggerReason": "PRE_THRESHOLD_TWO_PASSES",
+            "handoffActor": "WHITE",
+            "steps": [
+                {
+                    "stepIndex": 0,
+                    "ledgerEventId": "special-1",
+                    "abilityDeactivated": True,
+                    "noOp": False,
+                    "removalBatches": [
+                        {"black": [0], "white": []},
+                        {"black": [1], "white": []},
+                    ],
+                    "stableOccupancy": {"black": [], "white": [2, 9, 10]},
+                    "pskHistoryIndex": 2,
+                }
+            ],
+        }
+        with self.assertRaises(ContractError) as caught:
+            _validate_settlement_closure(atomic, ledger, split_settlement, 9)
+        self.assertEqual("semantic-invariant", caught.exception.code)
+
+    def test_immortal_fixture_rejects_protection_atomic_and_pop_drift(self) -> None:
+        for mutate in (
+            "unprotect-anchor",
+            "false-liberty",
+            "drop-atomic-center",
+            "false-deactivation",
+        ):
+            broken = copy.deepcopy(self.immortal_fixture)
+            if mutate in ("unprotect-anchor", "false-liberty"):
+                group = next(
+                    item
+                    for item in broken["steps"][16]["expectedProjection"]["debug"]["groups"]
+                    if 180 in item["stones"]
+                )
+                if mutate == "unprotect-anchor":
+                    group["protected"] = False
+                else:
+                    group["liberties"] = [159]
+            elif mutate == "drop-atomic-center":
+                final = broken["steps"][18]["expectedProjection"]
+                final["transition"]["atomicEvent"]["stableOccupancy"]["black"].remove(180)
+            else:
+                step = broken["steps"][18]["expectedProjection"]["transition"]["settlement"]["steps"][0]
+                step["abilityDeactivated"] = False
+            with self.subTest(mutate=mutate), self.assertRaises(ContractError) as caught:
+                _validate_fixture(broken, self.catalog, self.digest)
+            self.assertEqual("semantic-invariant", caught.exception.code)
 
     def test_consumed_double_settlement_pop_cannot_coherently_mutate_board(self) -> None:
         broken = copy.deepcopy(self.double_fixture)

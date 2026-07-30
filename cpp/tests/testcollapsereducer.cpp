@@ -1,8 +1,10 @@
 #include "../tests/tests.h"
 
+#include <algorithm>
 #include <limits>
 
 #include "../game/collapsegoreducer.h"
+#include "../game/collapsegotopology.h"
 
 using namespace std;
 
@@ -47,6 +49,64 @@ GameAction normalAction(int boardSize, int x, int y) {
   return GameAction::fromBoard(GameActionKind::NORMAL,boardSize,x,y);
 }
 
+int transformPoint(int boardSize, int point, int symmetry) {
+  int x = point % boardSize;
+  int y = point / boardSize;
+  if((symmetry & 2) != 0)
+    x = boardSize - 1 - x;
+  if((symmetry & 1) != 0)
+    y = boardSize - 1 - y;
+  if((symmetry & 4) != 0)
+    swap(x,y);
+  return y * boardSize + x;
+}
+
+vector<uint8_t> transformedOccupancy(
+  const vector<uint8_t>& occupancy,
+  int boardSize,
+  int symmetry
+) {
+  vector<uint8_t> transformed(occupancy.size(),static_cast<uint8_t>(C_EMPTY));
+  for(int point = 0; point < boardSize * boardSize; point++)
+    transformed[static_cast<size_t>(transformPoint(boardSize,point,symmetry))] =
+      occupancy[static_cast<size_t>(point)];
+  return transformed;
+}
+
+vector<Loc> transformedLocs(const vector<Loc>& locs, int boardSize, int symmetry) {
+  vector<Loc> transformed;
+  transformed.reserve(locs.size());
+  for(Loc loc: locs) {
+    int point = Location::getY(loc,boardSize) * boardSize + Location::getX(loc,boardSize);
+    int transformedPoint = transformPoint(boardSize,point,symmetry);
+    transformed.push_back(Location::getLoc(
+      transformedPoint % boardSize,transformedPoint / boardSize,boardSize
+    ));
+  }
+  sort(transformed.begin(),transformed.end());
+  return transformed;
+}
+
+vector<CollapseGoGroup> transformedGroups(
+  const vector<CollapseGoGroup>& groups,
+  int boardSize,
+  int symmetry
+) {
+  vector<CollapseGoGroup> transformed = groups;
+  for(CollapseGoGroup& group: transformed) {
+    for(int& point: group.stones)
+      point = transformPoint(boardSize,point,symmetry);
+    for(int& point: group.liberties)
+      point = transformPoint(boardSize,point,symmetry);
+    sort(group.stones.begin(),group.stones.end());
+    sort(group.liberties.begin(),group.liberties.end());
+  }
+  sort(transformed.begin(),transformed.end(),[](const CollapseGoGroup& left, const CollapseGoGroup& right) {
+    return left.stones.front() < right.stones.front();
+  });
+  return transformed;
+}
+
 GameAction specialAction(GameActionKind kind, int boardSize, int x, int y) {
   return GameAction::fromBoard(kind,boardSize,x,y);
 }
@@ -68,6 +128,14 @@ CollapseGoApplyResult playNormal(CollapseGoState& state, int x, int y) {
 
 CollapseGoApplyResult playPass(CollapseGoState& state) {
   return applyAccepted(state,state.getActor(),GameAction::pass());
+}
+
+CollapseGoApplyResult playImmortal(CollapseGoState& state, int x, int y) {
+  return applyAccepted(
+    state,
+    state.getActor(),
+    specialAction(GameActionKind::IMMORTAL,state.getConfig().getBoardSize(),x,y)
+  );
 }
 
 CollapseGoApplyResult playDoubleStart(CollapseGoState& state, int x, int y) {
@@ -110,6 +178,248 @@ void expectStringError(const function<void()>& operation) {
   throw StringError("Expected StringError, but operation succeeded");
 }
 
+void playImmortalTrueEyePrefix(CollapseGoState& state) {
+  playNormal(state,18,18); playNormal(state,9,8);
+  playNormal(state,18,17); playNormal(state,8,9);
+  playNormal(state,17,18); playNormal(state,10,9);
+  playNormal(state,17,17); playNormal(state,9,10);
+  playNormal(state,16,18); playNormal(state,8,8);
+  playNormal(state,18,16); playNormal(state,10,8);
+  playNormal(state,16,16); playNormal(state,8,10);
+  playNormal(state,16,17); playNormal(state,10,10);
+}
+
+void playWhiteImmortalTrueEyePrefix(CollapseGoState& state) {
+  playNormal(state,9,8); playNormal(state,18,18);
+  playNormal(state,8,9); playNormal(state,18,17);
+  playNormal(state,10,9); playNormal(state,17,18);
+  playNormal(state,9,10); playNormal(state,17,17);
+  playNormal(state,8,8); playNormal(state,16,18);
+  playNormal(state,10,8); playNormal(state,18,16);
+  playNormal(state,8,10); playNormal(state,16,16);
+  playNormal(state,10,10); playNormal(state,16,17);
+  playPass(state);
+}
+
+void playThresholdTrueEyePrefix(CollapseGoState& state) {
+  const pair<int,int> blackPoints[] = {
+    {0,0},{2,0},{4,0},{6,0},{8,0},{0,8},{2,8},{4,8},{6,8},
+    {8,8},{0,2},{0,4},{0,6},{4,3},{3,4},{5,4},{4,5},
+  };
+  const pair<int,int> whitePoints[] = {
+    {1,1},{3,1},{5,1},{7,1},{1,7},{3,7},{5,7},{7,7},
+    {2,3},{6,3},{2,5},{6,5},{1,3},{7,3},{1,5},{7,5},
+  };
+  const size_t blackPointCount = sizeof(blackPoints) / sizeof(blackPoints[0]);
+  const size_t whitePointCount = sizeof(whitePoints) / sizeof(whitePoints[0]);
+  for(size_t index = 0; index < blackPointCount; index++) {
+    playNormal(state,blackPoints[index].first,blackPoints[index].second);
+    if(index < whitePointCount)
+      playNormal(state,whitePoints[index].first,whitePoints[index].second);
+  }
+}
+
+struct ImmortalD4Episode {
+  vector<GameAction> actions;
+  CollapseGoState placementState;
+  CollapseGoState finalState;
+  CollapseGoApplyResult settlementResult;
+};
+
+ImmortalD4Episode runImmortalD4Episode(int symmetry) {
+  const int boardSize = 9;
+  CollapseGoState state(CollapseGoConfig::allOne(boardSize));
+  vector<GameAction> actions;
+  auto applyPoint = [&](GameActionKind kind, int x, int y) {
+    int transformedPoint = transformPoint(boardSize,y * boardSize + x,symmetry);
+    GameAction action = GameAction::fromBoard(
+      kind,boardSize,transformedPoint % boardSize,transformedPoint / boardSize
+    );
+    actions.push_back(action);
+    applyAccepted(state,state.getActor(),action);
+  };
+  auto applyPass = [&]() {
+    GameAction action = GameAction::pass();
+    actions.push_back(action);
+    return applyAccepted(state,state.getActor(),action);
+  };
+
+  const pair<int,int> setup[] = {
+    {0,0},{4,3},{1,0},{3,4},{2,0},{5,4},{7,7},{4,5},
+  };
+  for(const pair<int,int>& point: setup)
+    applyPoint(GameActionKind::NORMAL,point.first,point.second);
+  applyPoint(GameActionKind::IMMORTAL,4,4);
+  CollapseGoState placementState(state);
+  applyPass();
+  CollapseGoApplyResult settlement = applyPass();
+  return ImmortalD4Episode{actions,placementState,state,settlement};
+}
+
+void assertD4Actions(
+  const vector<GameAction>& reference,
+  const vector<GameAction>& transformed,
+  int boardSize,
+  int symmetry
+) {
+  testAssert(reference.size() == transformed.size());
+  for(size_t index = 0; index < reference.size(); index++) {
+    testAssert(reference[index].getKind() == transformed[index].getKind());
+    if(!GameAction::isPointKind(reference[index].getKind()))
+      continue;
+    int referencePoint = reference[index].getBoardY(boardSize) * boardSize +
+      reference[index].getBoardX(boardSize);
+    int transformedPoint = transformed[index].getBoardY(boardSize) * boardSize +
+      transformed[index].getBoardX(boardSize);
+    testAssert(transformedPoint == transformPoint(boardSize,referencePoint,symmetry));
+  }
+}
+
+void assertD4State(
+  const CollapseGoState& reference,
+  const CollapseGoState& transformed,
+  int symmetry
+) {
+  const int boardSize = reference.getConfig().getBoardSize();
+  testAssert(transformed.getConfig() == reference.getConfig());
+  testAssert(transformed.getPhase() == reference.getPhase());
+  testAssert(transformed.getActor() == reference.getActor());
+  testAssert(transformed.getAtomicActionCount() == reference.getAtomicActionCount());
+  testAssert(transformed.getConsecutivePasses() == reference.getConsecutivePasses());
+  testAssert(transformed.isSettlementCompleted() == reference.isSettlementCompleted());
+  testAssert(transformed.getRevision() == reference.getRevision());
+  testAssert(transformed.getLogPosition() == reference.getLogPosition());
+  testAssert(transformed.getSettledLedgerCount() == reference.getSettledLedgerCount());
+  testAssert(transformed.getStableTerminalEventCount() == reference.getStableTerminalEventCount());
+  testAssert(transformed.getPendingDouble() == reference.getPendingDouble());
+  testAssert(transformed.getScore() == reference.getScore());
+
+  for(Player player: {P_BLACK,P_WHITE}) {
+    for(CollapseGoAbility ability: {
+      CollapseGoAbility::IMMORTAL,
+      CollapseGoAbility::DOUBLE_MOVE,
+      CollapseGoAbility::EIGHTWAY,
+    }) {
+      testAssert(transformed.getInitialQuota(player,ability) == reference.getInitialQuota(player,ability));
+      testAssert(transformed.getRemainingQuota(player,ability) == reference.getRemainingQuota(player,ability));
+      testAssert(transformed.getUsedQuota(player,ability) == reference.getUsedQuota(player,ability));
+      testAssert(transformed.getExpiredQuota(player,ability) == reference.getExpiredQuota(player,ability));
+    }
+  }
+
+  for(int point = 0; point < reference.getPosition().getPointCount(); point++) {
+    int transformedPoint = transformPoint(boardSize,point,symmetry);
+    const CollapseGoCell& referenceCell = reference.getPosition().getCell(point);
+    const CollapseGoCell& transformedCell = transformed.getPosition().getCell(transformedPoint);
+    testAssert(transformedCell.getColor() == referenceCell.getColor());
+    if(referenceCell.isOccupied())
+      testAssert(transformedCell.getSource() == referenceCell.getSource());
+  }
+
+  const CollapseGoLedger& referenceLedger = reference.getLedger();
+  const CollapseGoLedger& transformedLedger = transformed.getLedger();
+  testAssert(transformedLedger.size() == referenceLedger.size());
+  for(size_t index = 0; index < referenceLedger.size(); index++) {
+    const CollapseGoLedgerEntry& referenceEntry = referenceLedger.at(index);
+    const CollapseGoLedgerEntry& transformedEntry = transformedLedger.at(index);
+    testAssert(transformedEntry.specialLink == referenceEntry.specialLink);
+    testAssert(transformedEntry.originActionNumber == referenceEntry.originActionNumber);
+    testAssert(transformedEntry.owner == referenceEntry.owner);
+    testAssert(transformedEntry.originKind == referenceEntry.originKind);
+    testAssert(transformedEntry.sourcePoint == transformPoint(
+      boardSize,referenceEntry.sourcePoint,symmetry
+    ));
+    testAssert(transformedEntry.abilityState == referenceEntry.abilityState);
+    testAssert(transformedEntry.stoneState == referenceEntry.stoneState);
+    testAssert(transformedEntry.settlementState == referenceEntry.settlementState);
+    testAssert(transformedEntry.tombstone == referenceEntry.tombstone);
+  }
+
+  vector<int> expectedAnchors;
+  for(int point: reference.getArmedImmortalAnchors())
+    expectedAnchors.push_back(transformPoint(boardSize,point,symmetry));
+  sort(expectedAnchors.begin(),expectedAnchors.end());
+  testAssert(transformed.getArmedImmortalAnchors() == expectedAnchors);
+
+  const PositionalSuperkoHistory& referenceHistory = reference.getPositionalSuperkoHistory();
+  const PositionalSuperkoHistory& transformedHistory = transformed.getPositionalSuperkoHistory();
+  testAssert(transformedHistory.size() == referenceHistory.size());
+  for(size_t index = 0; index < referenceHistory.size(); index++) {
+    testAssert(transformedHistory.at(index).getOccupancy() == transformedOccupancy(
+      referenceHistory.at(index).getOccupancy(),boardSize,symmetry
+    ));
+  }
+
+  CollapseGoTopology referenceTopology = CollapseGoTopology::fullScanN4(
+    reference.getPosition(),reference.getArmedImmortalAnchors()
+  );
+  CollapseGoTopology transformedTopology = CollapseGoTopology::fullScanN4(
+    transformed.getPosition(),transformed.getArmedImmortalAnchors()
+  );
+  testAssert(transformedTopology.getGroups() == transformedGroups(
+    referenceTopology.getGroups(),boardSize,symmetry
+  ));
+}
+
+void assertD4Settlement(
+  const CollapseGoApplyResult& reference,
+  const CollapseGoApplyResult& transformed,
+  int boardSize,
+  int symmetry
+) {
+  testAssert(transformed.accepted == reference.accepted);
+  testAssert(transformed.error == reference.error);
+  testAssert(transformed.capturedStones == transformedLocs(
+    reference.capturedStones,boardSize,symmetry
+  ));
+  testAssert(transformed.settlementTriggered == reference.settlementTriggered);
+  testAssert(transformed.settlementReason == reference.settlementReason);
+  testAssert(transformed.terminalScoreEventEmitted == reference.terminalScoreEventEmitted);
+  testAssert(transformed.positionalSuperkoAppends == reference.positionalSuperkoAppends);
+  testAssert(transformed.settlementSteps.size() == reference.settlementSteps.size());
+  for(size_t index = 0; index < reference.settlementSteps.size(); index++) {
+    const CollapseGoSettlementStep& referenceStep = reference.settlementSteps[index];
+    const CollapseGoSettlementStep& transformedStep = transformed.settlementSteps[index];
+    testAssert(transformedStep.stepIndex == referenceStep.stepIndex);
+    testAssert(transformedStep.specialLink == referenceStep.specialLink);
+    testAssert(transformedStep.originActionNumber == referenceStep.originActionNumber);
+    testAssert(transformedStep.owner == referenceStep.owner);
+    testAssert(transformedStep.originKind == referenceStep.originKind);
+    testAssert(transformedStep.sourcePoint == transformPoint(
+      boardSize,referenceStep.sourcePoint,symmetry
+    ));
+    testAssert(transformedStep.noOp == referenceStep.noOp);
+    testAssert(transformedStep.abilityDeactivated == referenceStep.abilityDeactivated);
+    testAssert(transformedStep.removalBatches.size() == referenceStep.removalBatches.size());
+    for(size_t batchIndex = 0; batchIndex < referenceStep.removalBatches.size(); batchIndex++) {
+      const CollapseGoRemovalBatch& referenceBatch = referenceStep.removalBatches[batchIndex];
+      const CollapseGoRemovalBatch& transformedBatch = transformedStep.removalBatches[batchIndex];
+      testAssert(transformedBatch.blackStones == transformedLocs(
+        referenceBatch.blackStones,boardSize,symmetry
+      ));
+      testAssert(transformedBatch.whiteStones == transformedLocs(
+        referenceBatch.whiteStones,boardSize,symmetry
+      ));
+    }
+    testAssert(transformedStep.stableOccupancy == transformedOccupancy(
+      referenceStep.stableOccupancy,boardSize,symmetry
+    ));
+    testAssert(transformedStep.positionalSuperkoHistoryIndex ==
+      referenceStep.positionalSuperkoHistoryIndex);
+  }
+}
+
+void playProtectedAttachmentPrefix(CollapseGoState& state) {
+  playNormal(state,8,8); playNormal(state,1,2);
+  playNormal(state,8,7); playNormal(state,3,2);
+  playNormal(state,7,8); playNormal(state,2,1);
+  playNormal(state,7,7); playNormal(state,1,3);
+  playNormal(state,6,8); playNormal(state,3,3);
+  playNormal(state,6,7); playNormal(state,2,4);
+  playImmortal(state,2,2);
+  playNormal(state,0,0);
+}
+
 void enterOrdinaryPlay(CollapseGoState& state) {
   CollapseGoApplyResult firstPass = playPass(state);
   testAssert(!firstPass.settlementTriggered);
@@ -130,6 +440,9 @@ void Tests::runCollapseReducerTests() {
     testAssert(CollapseGoConfig::thresholdForBoardSize(13) == 70);
     testAssert(CollapseGoConfig::thresholdForBoardSize(19) == 150);
     expectStringError([]() { CollapseGoConfig::allZero(11); });
+    expectStringError([]() {
+      CollapseGoLedgerEntry(1,1,P_BLACK,GameActionKind::EIGHTWAY,0);
+    });
     expectStringError([]() {
       CollapseGoConfig(9,CollapseGoQuotas(-1,0,0),CollapseGoQuotas());
     });
@@ -846,7 +1159,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // A Double start runs the exact N4 transaction and rejects suicide before any state commit.
+  // Double rejects ordinary suicide, while a newly armed Immortal survives the same zero-liberty point.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
     playNormal(state,8,8); playNormal(state,1,2);
@@ -860,12 +1173,17 @@ void Tests::runCollapseReducerTests() {
       CollapseGoApplyError::SUICIDE,
       true
     );
-    for(GameActionKind kind: {GameActionKind::IMMORTAL,GameActionKind::EIGHTWAY}) {
-      expectRejectedAtomically(
-        state,P_BLACK,specialAction(kind,9,2,2),
-        CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
-      );
-    }
+    expectRejectedAtomically(
+      state,P_BLACK,specialAction(GameActionKind::EIGHTWAY,9,2,2),
+      CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
+    );
+    playImmortal(state,2,2);
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    const CollapseGoGroup& protectedGroup = topology.getGroupAt(2 + 2 * 9);
+    testAssert(protectedGroup.liberties.empty());
+    testAssert(protectedGroup.protectedByImmortal);
   }
 
   // Off-footprint, terminal, phase, actor, quota, and occupancy precedence is deterministic.
@@ -917,7 +1235,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // Exhausted specials are semantic rejections; the two later special slices remain explicitly unsupported.
+  // Exhausted specials are semantic rejections; Eightway remains explicitly unsupported by the N4 slice.
   {
     CollapseGoState exhausted(CollapseGoConfig::allZero(9));
     for(GameActionKind kind: {
@@ -932,15 +1250,10 @@ void Tests::runCollapseReducerTests() {
     }
 
     CollapseGoState unsupported(CollapseGoConfig::allOne(9));
-    for(GameActionKind kind: {
-      GameActionKind::IMMORTAL,
-      GameActionKind::EIGHTWAY,
-    }) {
-      expectRejectedAtomically(
-        unsupported,P_BLACK,specialAction(kind,9,4,4),
-        CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
-      );
-    }
+    expectRejectedAtomically(
+      unsupported,P_BLACK,specialAction(GameActionKind::EIGHTWAY,9,4,4),
+      CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
+    );
   }
 
   // A ko-shaped recapture is rejected by exact occupancy-only positional superko, not Board simple-ko legality.
@@ -961,7 +1274,7 @@ void Tests::runCollapseReducerTests() {
     );
   }
 
-  // A Double start recapture runs exact occupancy-only PSK and rejects before any state commit.
+  // Double and Immortal recaptures both obey exact occupancy-only PSK and roll back atomically.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
     playNormal(state,1,2); playNormal(state,1,1);
@@ -974,12 +1287,428 @@ void Tests::runCollapseReducerTests() {
       state,P_WHITE,specialAction(GameActionKind::DOUBLE_START,9,2,2),
       CollapseGoApplyError::POSITIONAL_SUPERKO,true
     );
-    for(GameActionKind kind: {GameActionKind::IMMORTAL,GameActionKind::EIGHTWAY}) {
-      expectRejectedAtomically(
-        state,P_WHITE,specialAction(kind,9,2,2),
-        CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
-      );
+    expectRejectedAtomically(
+      state,P_WHITE,specialAction(GameActionKind::IMMORTAL,9,2,2),
+      CollapseGoApplyError::POSITIONAL_SUPERKO,true
+    );
+    testAssert(state.getLedger().empty());
+    testAssert(state.getRemainingQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(state.getUsedQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 0);
+    expectRejectedAtomically(
+      state,P_WHITE,specialAction(GameActionKind::EIGHTWAY,9,2,2),
+      CollapseGoApplyError::UNSUPPORTED_BY_SLICE,false
+    );
+  }
+
+  // Frozen true-eye fixture: only Immortal may occupy the zero-liberty center, then settlement removes it.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(19));
+    playImmortalTrueEyePrefix(state);
+    testAssert(state.getAtomicActionCount() == 16);
+    expectRejectedAtomically(
+      state,P_BLACK,normalAction(19,9,9),CollapseGoApplyError::SUICIDE,true
+    );
+    expectRejectedAtomically(
+      state,P_BLACK,specialAction(GameActionKind::DOUBLE_START,19,9,9),
+      CollapseGoApplyError::SUICIDE,true
+    );
+
+    CollapseGoApplyResult placement = playImmortal(state,9,9);
+    testAssert(placement.positionalSuperkoAppends == 1);
+    testAssert(state.getAtomicActionCount() == 17);
+    testAssert(state.getRevision() == 17);
+    testAssert(state.getLogPosition() == 17);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getRemainingQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(state.getArmedImmortalAnchors() == vector<int>({180}));
+    const CollapseGoLedgerEntry& armed = state.getLedger().at(0);
+    testAssert(armed.originActionNumber == 17);
+    testAssert(armed.originKind == GameActionKind::IMMORTAL);
+    testAssert(armed.sourcePoint == 180);
+    testAssert(armed.abilityState == CollapseGoLedgerAbilityState::ARMED);
+    testAssert(armed.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(armed.settlementState == CollapseGoLedgerSettlementState::PENDING);
+    testAssert(!armed.tombstone);
+    const CollapseGoStoneSource& source = state.getPosition().getCell(9,9).getSource();
+    testAssert(source.originActionNumber == 17);
+    testAssert(source.originKind == GameActionKind::IMMORTAL);
+    testAssert(source.specialLink.has_value() && *source.specialLink == 17);
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    const CollapseGoGroup& protectedGroup = topology.getGroupAt(180);
+    testAssert(protectedGroup.stones == vector<int>({180}));
+    testAssert(protectedGroup.liberties.empty());
+    testAssert(protectedGroup.protectedByImmortal);
+    testAssert(state.getPositionalSuperkoHistory().size() == 18);
+    testAssert(state.getPositionalSuperkoHistory().at(17) ==
+      PositionalSuperkoKey(19,state.getPosition().getRowMajorOccupancy()));
+
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.positionalSuperkoAppends == 2);
+    testAssert(trigger.settlementSteps.size() == 1);
+    const CollapseGoSettlementStep& step = trigger.settlementSteps[0];
+    testAssert(step.stepIndex == 0);
+    testAssert(step.specialLink == 17);
+    testAssert(step.originKind == GameActionKind::IMMORTAL);
+    testAssert(step.abilityDeactivated);
+    testAssert(!step.noOp);
+    testAssert(step.removalBatches.size() == 1);
+    testAssert(step.removalBatches[0].blackStones == vector<Loc>({Location::getLoc(9,9,19)}));
+    testAssert(step.removalBatches[0].whiteStones.empty());
+    testAssert(step.stableOccupancy == state.getPositionalSuperkoHistory().at(16).getOccupancy());
+    testAssert(step.positionalSuperkoHistoryIndex == 20);
+    testAssert(state.getPosition().isEmpty(9,9));
+    const CollapseGoLedgerEntry& settled = state.getLedger().at(0);
+    testAssert(settled.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(settled.stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(settled.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(settled.tombstone);
+    testAssert(state.getArmedImmortalAnchors().empty());
+    testAssert(state.getAtomicActionCount() == 19);
+    testAssert(state.getRevision() == 19);
+    testAssert(state.getLogPosition() == 20);
+    testAssert(state.getPositionalSuperkoHistory().size() == 21);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getConsecutivePasses() == 0);
+    state.checkConsistency();
+
+    playPass(state);
+    expectRejectedAtomically(
+      state,P_BLACK,normalAction(19,9,9),CollapseGoApplyError::SUICIDE,true
+    );
+  }
+
+  // The mirrored reachable fixture exercises the white settlement-removal batch.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(19));
+    playWhiteImmortalTrueEyePrefix(state);
+    testAssert(state.getAtomicActionCount() == 17);
+    testAssert(state.getActor() == P_WHITE);
+    playImmortal(state,9,9);
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementSteps.size() == 1);
+    const CollapseGoSettlementStep& step = trigger.settlementSteps[0];
+    testAssert(step.originActionNumber == 18);
+    testAssert(step.owner == P_WHITE);
+    testAssert(step.abilityDeactivated && !step.noOp);
+    testAssert(step.removalBatches.size() == 1);
+    testAssert(step.removalBatches[0].blackStones.empty());
+    testAssert(step.removalBatches[0].whiteStones == vector<Loc>({Location::getLoc(9,9,19)}));
+    testAssert(step.stableOccupancy == state.getPositionalSuperkoHistory().at(17).getOccupancy());
+    testAssert(step.positionalSuperkoHistoryIndex == 21);
+    testAssert(state.getPosition().isEmpty(9,9));
+    testAssert(state.getLedger().at(0).abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getLedger().at(0).settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(state.getLedger().at(0).tombstone);
+    testAssert(state.getAtomicActionCount() == 20);
+    testAssert(state.getRevision() == 20);
+    testAssert(state.getLogPosition() == 21);
+    testAssert(state.getSettledLedgerCount() == 1);
+    testAssert(state.getPositionalSuperkoHistory().size() == 22);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(state.getActor() == P_BLACK);
+    state.checkConsistency();
+  }
+
+  // A reachable Immortal placement-to-settlement episode is exact under all D4 maps and inverses.
+  {
+    const int inverseSymmetry[8] = {0,1,2,3,4,6,5,7};
+    ImmortalD4Episode reference = runImmortalD4Episode(0);
+    testAssert(reference.placementState.getArmedImmortalAnchors() == vector<int>({40}));
+    testAssert(reference.settlementResult.settlementSteps.size() == 1);
+    testAssert(reference.settlementResult.settlementSteps[0].removalBatches.size() == 1);
+    testAssert(reference.settlementResult.settlementSteps[0].removalBatches[0].blackStones ==
+      vector<Loc>({Location::getLoc(4,4,9)}));
+
+    for(int symmetry = 0; symmetry < 8; symmetry++) {
+      ImmortalD4Episode transformed = runImmortalD4Episode(symmetry);
+      assertD4Actions(reference.actions,transformed.actions,9,symmetry);
+      assertD4State(reference.placementState,transformed.placementState,symmetry);
+      assertD4State(reference.finalState,transformed.finalState,symmetry);
+      assertD4Settlement(reference.settlementResult,transformed.settlementResult,9,symmetry);
+
+      int inverse = inverseSymmetry[symmetry];
+      assertD4Actions(transformed.actions,reference.actions,9,inverse);
+      assertD4State(transformed.placementState,reference.placementState,inverse);
+      assertD4State(transformed.finalState,reference.finalState,inverse);
+      assertD4Settlement(transformed.settlementResult,reference.settlementResult,9,inverse);
     }
+  }
+
+  // An opponent may fill the last liberty without capturing a protected group.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playNormal(state,8,8); playNormal(state,1,2);
+    playNormal(state,8,7); playNormal(state,3,2);
+    playNormal(state,7,8); playNormal(state,2,1);
+    playImmortal(state,2,2);
+    CollapseGoApplyResult fill = playNormal(state,2,3);
+    testAssert(fill.capturedStones.empty());
+    testAssert(state.getPosition().getColor(2,2) == C_BLACK);
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    const CollapseGoGroup& protectedGroup = topology.getGroupAt(2 + 2 * 9);
+    testAssert(protectedGroup.liberties.empty());
+    testAssert(protectedGroup.protectedByImmortal);
+  }
+
+  // A NORMAL stone may fill the last liberty and join an armed protected group.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playProtectedAttachmentPrefix(state);
+    playNormal(state,2,3);
+    const CollapseGoStoneSource& attachedSource = state.getPosition().getCell(2,3).getSource();
+    testAssert(attachedSource.originKind == GameActionKind::NORMAL);
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    const CollapseGoGroup& protectedGroup = topology.getGroupAt(2 + 2 * 9);
+    testAssert(protectedGroup.stones == vector<int>({20,29}));
+    testAssert(protectedGroup.liberties.empty());
+    testAssert(protectedGroup.protectedByImmortal);
+    state.checkConsistency();
+  }
+
+  // A Double start uses ordinary N4 mechanics and may likewise join a protected zero-liberty group.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playProtectedAttachmentPrefix(state);
+    playDoubleStart(state,2,3);
+    testAssert(state.getPendingDouble().has_value());
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    const CollapseGoGroup& protectedGroup = topology.getGroupAt(2 + 2 * 9);
+    testAssert(protectedGroup.liberties.empty());
+    testAssert(protectedGroup.protectedByImmortal);
+    testAssert(state.getPosition().getCell(2,3).getSource().originKind ==
+      GameActionKind::DOUBLE_START);
+    playPass(state);
+    state.checkConsistency();
+  }
+
+  // A surviving Immortal becomes ordinary at settlement and may later be captured without lifecycle refund.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playNormal(state,8,8); playNormal(state,1,0);
+    playNormal(state,8,7); playNormal(state,0,1);
+    playNormal(state,7,8); playNormal(state,2,1);
+    playImmortal(state,1,1);
+    playPass(state);
+    CollapseGoApplyResult settlement = playPass(state);
+    testAssert(settlement.settlementSteps.size() == 1);
+    testAssert(settlement.settlementSteps[0].abilityDeactivated);
+    testAssert(settlement.settlementSteps[0].removalBatches.empty());
+    testAssert(state.getPosition().getColor(1,1) == C_BLACK);
+    testAssert(state.getLedger().at(0).abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(state.getLedger().at(0).tombstone);
+
+    CollapseGoApplyResult capture = playNormal(state,1,2);
+    testAssert(capture.capturedStones == vector<Loc>({Location::getLoc(1,1,9)}));
+    testAssert(state.getPosition().isEmpty(1,1));
+    testAssert(state.getLedger().at(0).abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(state.getLedger().at(0).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(state.getLedger().at(0).settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(state.getLedger().at(0).tombstone);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(state.getExpiredQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 0);
+    state.checkConsistency();
+  }
+
+  // Action T commits a zero-liberty Immortal snapshot before its first settlement pop removes it.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playThresholdTrueEyePrefix(state);
+    const int anchor = 4 + 4 * 9;
+    testAssert(state.getAtomicActionCount() == 33);
+    testAssert(state.getActor() == P_WHITE);
+    testAssert(state.getPosition().isEmpty(anchor));
+
+    CollapseGoApplyResult trigger = playImmortal(state,4,4);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::THRESHOLD);
+    testAssert(trigger.positionalSuperkoAppends == 2);
+    testAssert(trigger.capturedStones.empty());
+    testAssert(trigger.settlementSteps.size() == 1);
+    const CollapseGoSettlementStep& step = trigger.settlementSteps[0];
+    testAssert(step.originActionNumber == 34);
+    testAssert(step.originKind == GameActionKind::IMMORTAL);
+    testAssert(step.sourcePoint == anchor);
+    testAssert(step.abilityDeactivated);
+    testAssert(!step.noOp);
+    testAssert(step.removalBatches.size() == 1);
+    testAssert(step.removalBatches[0].blackStones.empty());
+    testAssert(step.removalBatches[0].whiteStones == vector<Loc>({Location::getLoc(4,4,9)}));
+    testAssert(step.positionalSuperkoHistoryIndex == 35);
+
+    const vector<uint8_t>& actionOccupancy =
+      state.getPositionalSuperkoHistory().at(34).getOccupancy();
+    const vector<uint8_t>& settlementOccupancy =
+      state.getPositionalSuperkoHistory().at(35).getOccupancy();
+    testAssert(actionOccupancy[static_cast<size_t>(anchor)] == static_cast<uint8_t>(C_WHITE));
+    testAssert(settlementOccupancy[static_cast<size_t>(anchor)] == static_cast<uint8_t>(C_EMPTY));
+    testAssert(actionOccupancy != settlementOccupancy);
+    testAssert(step.stableOccupancy == settlementOccupancy);
+    testAssert(state.getPosition().isEmpty(anchor));
+
+    const CollapseGoLedgerEntry& settled = state.getLedger().at(0);
+    testAssert(settled.sourcePoint == anchor);
+    testAssert(settled.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(settled.stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(settled.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(settled.tombstone);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(state.getAtomicActionCount() == 34);
+    testAssert(state.getRevision() == 34);
+    testAssert(state.getLogPosition() == 35);
+    testAssert(state.getSettledLedgerCount() == 1);
+    testAssert(state.getPositionalSuperkoHistory().size() == 36);
+    state.checkConsistency();
+  }
+
+  // With two anchors in one zero-liberty group, the newest pop leaves protection and the older pop removes both.
+  {
+    CollapseGoConfig config(9,CollapseGoQuotas(2,0,0),CollapseGoQuotas(0,0,0));
+    CollapseGoState state(config);
+    playImmortal(state,2,2); playNormal(state,2,1);
+    playNormal(state,8,8); playNormal(state,1,2);
+    playNormal(state,8,7); playNormal(state,3,2);
+    playNormal(state,7,8); playNormal(state,1,3);
+    playNormal(state,7,7); playNormal(state,3,3);
+    playNormal(state,6,8); playNormal(state,2,4);
+    playImmortal(state,2,3);
+    CollapseGoTopology before = CollapseGoTopology::fullScanN4(
+      state.getPosition(),state.getArmedImmortalAnchors()
+    );
+    testAssert(before.getGroupAt(20).liberties.empty());
+    testAssert(before.getGroupAt(20).protectedByImmortal);
+    testAssert(state.getArmedImmortalAnchors() == vector<int>({20,29}));
+
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.positionalSuperkoAppends == 3);
+    testAssert(trigger.settlementSteps.size() == 2);
+    const CollapseGoSettlementStep& newest = trigger.settlementSteps[0];
+    testAssert(newest.originActionNumber == 13);
+    testAssert(newest.abilityDeactivated && !newest.noOp);
+    testAssert(newest.removalBatches.empty());
+    testAssert(newest.positionalSuperkoHistoryIndex == 16);
+    testAssert(newest.stableOccupancy == state.getPositionalSuperkoHistory().at(16).getOccupancy());
+    testAssert(newest.stableOccupancy[20] == static_cast<uint8_t>(C_BLACK));
+    testAssert(newest.stableOccupancy[29] == static_cast<uint8_t>(C_BLACK));
+    const CollapseGoSettlementStep& oldest = trigger.settlementSteps[1];
+    testAssert(oldest.originActionNumber == 1);
+    testAssert(oldest.abilityDeactivated && !oldest.noOp);
+    testAssert(oldest.removalBatches.size() == 1);
+    testAssert(oldest.removalBatches[0].blackStones == vector<Loc>({
+      Location::getLoc(2,2,9),Location::getLoc(2,3,9)
+    }));
+    testAssert(oldest.removalBatches[0].whiteStones.empty());
+    testAssert(oldest.positionalSuperkoHistoryIndex == 17);
+    testAssert(oldest.stableOccupancy == state.getPositionalSuperkoHistory().at(17).getOccupancy());
+    testAssert(state.getPosition().isEmpty(2,2));
+    testAssert(state.getPosition().isEmpty(2,3));
+    for(size_t i = 0; i < state.getLedger().size(); i++) {
+      testAssert(state.getLedger().at(i).abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+      testAssert(state.getLedger().at(i).stoneState == CollapseGoLedgerStoneState::CAPTURED);
+      testAssert(state.getLedger().at(i).settlementState == CollapseGoLedgerSettlementState::SETTLED);
+      testAssert(state.getLedger().at(i).tombstone);
+    }
+    testAssert(state.getAtomicActionCount() == 15);
+    testAssert(state.getRevision() == 15);
+    testAssert(state.getLogPosition() == 17);
+    testAssert(state.getSettledLedgerCount() == 2);
+    testAssert(state.getPositionalSuperkoHistory().size() == 18);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(state.getActor() == P_WHITE);
+    state.checkConsistency();
+  }
+
+  // Mixed Double and Immortal entries settle in one global newest-to-oldest order.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playImmortal(state,0,0);
+    playDoubleStart(state,8,8);
+    playNormal(state,8,7);
+    playDoubleStart(state,1,0);
+    playPass(state);
+    playImmortal(state,7,8);
+    playPass(state);
+    CollapseGoApplyResult trigger = playPass(state);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.settlementSteps.size() == 4);
+    const int64_t expectedOrigins[4] = {6,4,2,1};
+    const GameActionKind expectedKinds[4] = {
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::IMMORTAL,
+    };
+    const bool expectedDeactivated[4] = {true,false,false,true};
+    for(size_t i = 0; i < trigger.settlementSteps.size(); i++) {
+      const CollapseGoSettlementStep& step = trigger.settlementSteps[i];
+      testAssert(step.stepIndex == static_cast<int64_t>(i));
+      testAssert(step.originActionNumber == expectedOrigins[i]);
+      testAssert(step.originKind == expectedKinds[i]);
+      testAssert(step.abilityDeactivated == expectedDeactivated[i]);
+      testAssert(step.noOp != expectedDeactivated[i]);
+      testAssert(step.removalBatches.empty());
+      testAssert(step.positionalSuperkoHistoryIndex == static_cast<int64_t>(9 + i));
+      testAssert(step.stableOccupancy ==
+        state.getPositionalSuperkoHistory().at(static_cast<size_t>(9 + i)).getOccupancy());
+    }
+    testAssert(trigger.positionalSuperkoAppends == 5);
+    testAssert(state.getAtomicActionCount() == 8);
+    testAssert(state.getRevision() == 8);
+    testAssert(state.getLogPosition() == 12);
+    testAssert(state.getSettledLedgerCount() == 4);
+    testAssert(state.getPositionalSuperkoHistory().size() == 13);
+    testAssert(state.getActor() == P_BLACK);
+    testAssert(state.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    state.checkConsistency();
+  }
+
+  // Malformed restored shells cannot forge armed anchors or live Immortal tombstones.
+  {
+    CollapseGoState tombstone(CollapseGoConfig::allOne(9));
+    playImmortal(tombstone,4,4);
+    CollapseGoStateTestAccess::ledgerEntry(tombstone,0).tombstone = true;
+    expectStringError([&]() { tombstone.checkConsistency(); });
+
+    CollapseGoState captured(CollapseGoConfig::allOne(9));
+    playImmortal(captured,4,4);
+    CollapseGoStateTestAccess::ledgerEntry(captured,0).stoneState =
+      CollapseGoLedgerStoneState::CAPTURED;
+    expectStringError([&]() { captured.checkConsistency(); });
+
+    CollapseGoState capturedPending(CollapseGoConfig::allOne(9));
+    playImmortal(capturedPending,4,4);
+    CollapseGoLedgerEntry& capturedPendingEntry =
+      CollapseGoStateTestAccess::ledgerEntry(capturedPending,0);
+    capturedPendingEntry.abilityState = CollapseGoLedgerAbilityState::INACTIVE;
+    capturedPendingEntry.stoneState = CollapseGoLedgerStoneState::CAPTURED;
+    capturedPendingEntry.tombstone = true;
+    expectStringError([&]() { capturedPending.checkConsistency(); });
+
+    CollapseGoState missingAnchor(CollapseGoConfig::allOne(9));
+    playImmortal(missingAnchor,4,4);
+    CollapseGoStateTestAccess::ledgerEntry(missingAnchor,0).sourcePoint = 0;
+    expectStringError([&]() { missingAnchor.checkConsistency(); });
   }
 
   // Two new ordinary-play passes score the current stable board and append both action and terminal occupancies.

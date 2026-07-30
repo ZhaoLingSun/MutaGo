@@ -791,6 +791,32 @@ def transition_projection(
     }
 
 
+def _apply_v1_adapter(
+    state: OracleState,
+    actor: Color,
+    action: Mapping[str, object],
+):
+    """Keep Increment 1 mechanically closed when the shared oracle grows."""
+
+    try:
+        transition = apply_action(state, actor, action)
+    except UnsupportedSliceAction:
+        return None
+    kind = decode_action_v1(action, state.config.board_size).kind
+    immortal_mechanics_reached = kind is ActionKind.IMMORTAL and (
+        transition.accepted
+        or (
+            transition.rejection_code is not None
+            and transition.rejection_code.value in ("SUICIDE", "POSITIONAL_SUPERKO")
+        )
+    )
+    if immortal_mechanics_reached or (
+        transition.accepted and kind is ActionKind.EIGHTWAY
+    ):
+        return None
+    return transition
+
+
 def oracle_episode_response(
     request: object, *, deadline: float | None = None
 ) -> dict[str, object]:
@@ -804,9 +830,8 @@ def oracle_episode_response(
         _check_deadline(deadline, "Python oracle execution")
         previous = state
         actor = Color(step["candidateActor"])
-        try:
-            transition = apply_action(state, actor, step["action"])
-        except UnsupportedSliceAction:
+        transition = _apply_v1_adapter(state, actor, step["action"])
+        if transition is None:
             projected_transition = transition_projection(
                 previous, actor, step["action"], None, unsupported=True
             )
@@ -841,9 +866,8 @@ def oracle_episode_transitions(
     for step in frame["steps"]:
         _check_deadline(deadline, "deterministic action re-execution")
         actor = Color(step["candidateActor"])
-        try:
-            transition = apply_action(state, actor, step["action"])
-        except UnsupportedSliceAction:
+        transition = _apply_v1_adapter(state, actor, step["action"])
+        if transition is None:
             transitions.append(None)
         else:
             transitions.append(transition)
@@ -1774,9 +1798,8 @@ class EpisodeBuilder:
         step = {"candidateActor": actor.value, "action": dict(action)}
         decode_action_v1(step["action"], self.board_size)
         self.steps.append(step)
-        try:
-            transition = apply_action(self.state, actor, step["action"])
-        except UnsupportedSliceAction:
+        transition = _apply_v1_adapter(self.state, actor, step["action"])
+        if transition is None:
             _check_deadline(self.deadline, "corpus generation")
             return None
         self.state = transition.state
@@ -1817,9 +1840,8 @@ def _first_accepted_point_action(
             point // state.config.board_size,
             kind,
         )
-        try:
-            transition = apply_action(state, state.actor, action)
-        except UnsupportedSliceAction:
+        transition = _apply_v1_adapter(state, state.actor, action)
+        if transition is None:
             continue
         if transition.accepted:
             return action

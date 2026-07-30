@@ -644,10 +644,18 @@ def _apply_v0_slice_action(
     """
 
     transition = apply_action(state, candidate_actor, envelope)
-    if transition.accepted and transition.action.kind in (
-        ActionKind.IMMORTAL,
-        ActionKind.DOUBLE_START,
-        ActionKind.EIGHTWAY,
+    kind = transition.action.kind
+    immortal_mechanics_reached = kind is ActionKind.IMMORTAL and (
+        transition.accepted
+        or transition.rejection_code
+        in (RejectionCode.SUICIDE, RejectionCode.POSITIONAL_SUPERKO)
+    )
+    if immortal_mechanics_reached or (
+        transition.accepted
+        and kind in (
+            ActionKind.DOUBLE_START,
+            ActionKind.EIGHTWAY,
+        )
     ):
         raise UnsupportedSliceAction(transition.action, candidate_actor)
     return transition

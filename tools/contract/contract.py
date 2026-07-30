@@ -1461,6 +1461,135 @@ def _quota_keys() -> tuple[str, ...]:
     return ("IMMORTAL", "DOUBLE_START", "EIGHTWAY")
 
 
+def _contract_interface_neighbors(point: int, board_size: int, eightway: bool) -> set[int]:
+    x = point % board_size
+    y = point // board_size
+    offsets = (
+        (
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        )
+        if eightway
+        else ((0, -1), (-1, 0), (1, 0), (0, 1))
+    )
+    result: set[int] = set()
+    for dx, dy in offsets:
+        nx = x + dx
+        ny = y + dy
+        if 0 <= nx < board_size and 0 <= ny < board_size:
+            result.add(ny * board_size + nx)
+    return result
+
+
+def _contract_active_anchors(
+    ledger: Sequence[Mapping[str, Any]],
+    occupied_by_color: Mapping[str, set[int]],
+) -> dict[str, dict[str, set[int]]]:
+    anchors = {
+        "IMMORTAL": {"BLACK": set(), "WHITE": set()},
+        "EIGHTWAY": {"BLACK": set(), "WHITE": set()},
+    }
+    for entry in ledger:
+        kind = entry["kind"]
+        owner = entry["owner"]
+        point = entry["sourcePoint"]
+        if (
+            kind in anchors
+            and entry["abilityState"] == "ARMED"
+            and entry["stoneState"] == "ON_BOARD"
+            and point in occupied_by_color[owner]
+        ):
+            anchors[kind][owner].add(point)
+    return anchors
+
+
+def _contract_mixed_groups(
+    occupied_by_color: Mapping[str, set[int]],
+    ledger: Sequence[Mapping[str, Any]],
+    board_size: int,
+    *,
+    require_stable: bool,
+) -> list[dict[str, Any]]:
+    occupied = occupied_by_color["BLACK"] | occupied_by_color["WHITE"]
+    anchors = _contract_active_anchors(ledger, occupied_by_color)
+    groups: list[dict[str, Any]] = []
+    for color in ("BLACK", "WHITE"):
+        remaining = set(occupied_by_color[color])
+        eightway = anchors["EIGHTWAY"][color]
+        immortal = anchors["IMMORTAL"][color]
+        while remaining:
+            start = min(remaining)
+            component: set[int] = set()
+            frontier = [start]
+            while frontier:
+                point = frontier.pop()
+                if point in component:
+                    continue
+                component.add(point)
+                px = point % board_size
+                py = point // board_size
+                for candidate in occupied_by_color[color] - component:
+                    cx = candidate % board_size
+                    cy = candidate // board_size
+                    dx = abs(px - cx)
+                    dy = abs(py - cy)
+                    if dx + dy == 1 or (
+                        max(dx, dy) == 1
+                        and (point in eightway or candidate in eightway)
+                    ):
+                        frontier.append(candidate)
+            remaining -= component
+            liberties: set[int] = set()
+            for point in component:
+                liberties.update(
+                    _contract_interface_neighbors(
+                        point, board_size, point in eightway
+                    )
+                    - occupied
+                )
+            protected = bool(component & immortal)
+            if require_stable and not liberties and not protected:
+                _raise(
+                    "semantic-invariant",
+                    "stable debug topology contains an unprotected zero-liberty group",
+                )
+            groups.append(
+                {
+                    "color": color,
+                    "eightwayAnchors": sorted(component & eightway),
+                    "immortalAnchors": sorted(component & immortal),
+                    "liberties": sorted(liberties),
+                    "protected": protected,
+                    "stones": sorted(component),
+                }
+            )
+    groups.sort(key=lambda group: group["stones"][0])
+    return groups
+
+
+def _contract_zero_liberty_union(
+    occupied_by_color: Mapping[str, set[int]],
+    ledger: Sequence[Mapping[str, Any]],
+    board_size: int,
+) -> dict[str, list[int]]:
+    removed = {"black": [], "white": []}
+    for group in _contract_mixed_groups(
+        occupied_by_color, ledger, board_size, require_stable=False
+    ):
+        if not group["liberties"] and not group["protected"]:
+            key = "black" if group["color"] == "BLACK" else "white"
+            removed[key].extend(group["stones"])
+    removed["black"].sort()
+    removed["white"].sort()
+    return removed
+
+
 def _validate_projection(
     projection: Any,
     catalog: SchemaCatalog,
@@ -1675,13 +1804,16 @@ def _validate_projection(
             _raise("semantic-invariant", "every nonterminal decision state must include PASS")
     debug_stones: set[int] = set()
     occupied = occupied_by_color["BLACK"] | occupied_by_color["WHITE"]
-    armed_anchor_points = {
-        "IMMORTAL": {"BLACK": set(), "WHITE": set()},
-        "EIGHTWAY": {"BLACK": set(), "WHITE": set()},
-    }
-    for entry in state["ledger"]:
-        if entry["kind"] in armed_anchor_points and entry["abilityState"] == "ARMED" and entry["stoneState"] == "ON_BOARD":
-            armed_anchor_points[entry["kind"]][entry["owner"]].add(entry["sourcePoint"])
+    armed_anchor_points = _contract_active_anchors(
+        state["ledger"], occupied_by_color
+    )
+    expected_debug_groups = _contract_mixed_groups(
+        occupied_by_color,
+        state["ledger"],
+        board_size,
+        require_stable=True,
+    )
+
     group_order: list[int] = []
     for group in projection["debug"]["groups"]:
         _assert_strictly_sorted_unique(group["stones"], "debug group stones")
@@ -1713,6 +1845,11 @@ def _validate_projection(
         _raise("semantic-invariant", "debug groups must be ordered by their least board-local point")
     if debug_stones != occupied:
         _raise("semantic-invariant", "debug groups must cover every stable stone")
+    if projection["debug"]["groups"] != expected_debug_groups:
+        _raise(
+            "semantic-invariant",
+            "debug groups, mixed connectivity, liberties, anchors, or protection differ from the stable board",
+        )
     transition = projection["transition"]
     if transition is None:
         if projection["stepIndex"] != 0:
@@ -1937,6 +2074,86 @@ def _occupancy_from_sets(occupancy: Mapping[str, set[int]]) -> dict[str, list[in
     return {"black": sorted(occupancy["BLACK"]), "white": sorted(occupancy["WHITE"])}
 
 
+def _validate_settlement_closure(
+    atomic_occupancy: Mapping[str, Any],
+    pre_settlement_ledger: Sequence[Mapping[str, Any]],
+    settlement: Mapping[str, Any],
+    board_size: int,
+) -> tuple[dict[str, list[int]], list[dict[str, Any]]]:
+    occupied = _occupancy_sets(atomic_occupancy)
+    ledger = copy.deepcopy(list(pre_settlement_ledger))
+    ledger_by_id = {entry["eventId"]: entry for entry in ledger}
+    for expected_step_index, step in enumerate(settlement["steps"]):
+        event_id = step["ledgerEventId"]
+        entry = ledger_by_id.get(event_id)
+        if entry is None or entry["settlementState"] != "PENDING":
+            _raise(
+                "semantic-invariant",
+                "settlement step must reference one pending ledger event exactly once",
+            )
+        if step["stepIndex"] != expected_step_index:
+            _raise("semantic-invariant", "settlement steps must use contiguous indexes")
+        owner = entry["owner"]
+        source_live = (
+            entry["stoneState"] == "ON_BOARD"
+            and entry["sourcePoint"] in occupied[owner]
+        )
+        ability_deactivated = (
+            entry["kind"] in {"IMMORTAL", "EIGHTWAY"}
+            and entry["abilityState"] == "ARMED"
+            and source_live
+        )
+        if step["abilityDeactivated"] != ability_deactivated:
+            _raise(
+                "semantic-invariant",
+                "settlement abilityDeactivated differs from reconstructed ledger state",
+            )
+        entry["abilityState"] = "INACTIVE"
+        entry["settlementState"] = "SETTLED"
+        entry["tombstone"] = True
+
+        derived_batches: list[dict[str, list[int]]] = []
+        while True:
+            removal = _contract_zero_liberty_union(occupied, ledger, board_size)
+            if not removal["black"] and not removal["white"]:
+                break
+            derived_batches.append(copy.deepcopy(removal))
+            removed_by_owner = {
+                "BLACK": set(removal["black"]),
+                "WHITE": set(removal["white"]),
+            }
+            occupied["BLACK"] -= removed_by_owner["BLACK"]
+            occupied["WHITE"] -= removed_by_owner["WHITE"]
+            for source in ledger:
+                source_owner = source["owner"]
+                if (
+                    source["stoneState"] == "ON_BOARD"
+                    and source["sourcePoint"] in removed_by_owner[source_owner]
+                ):
+                    source["stoneState"] = "CAPTURED"
+                    if source["kind"] in {"IMMORTAL", "EIGHTWAY"}:
+                        source["abilityState"] = "INACTIVE"
+                        source["tombstone"] = True
+
+        if step["removalBatches"] != derived_batches:
+            _raise(
+                "semantic-invariant",
+                "settlement removal batches must equal every exact nonempty simultaneous closure wave",
+            )
+        expected_no_op = not ability_deactivated and not derived_batches
+        if step["noOp"] != expected_no_op:
+            _raise(
+                "semantic-invariant",
+                "settlement noOp differs from derived ability and closure effects",
+            )
+        if step["stableOccupancy"] != _occupancy_from_sets(occupied):
+            _raise(
+                "semantic-invariant",
+                "settlement stable occupancy differs from independently derived closure",
+            )
+    return _occupancy_from_sets(occupied), ledger
+
+
 def _validate_projection_from_previous(previous: Any, current: Any) -> None:
     transition = current["transition"]
     if transition is None:
@@ -1994,16 +2211,38 @@ def _validate_projection_from_previous(previous: Any, current: Any) -> None:
             if current_state["ledger"] != pre_settlement_entries:
                 _raise("semantic-invariant", "non-settling atomic transition ledger differs from captures and special-event creation")
         else:
-            removed_points = {
-                point
-                for step in settlement["steps"]
-                for batch in step["removalBatches"]
-                for points in (batch["black"], batch["white"])
-                for point in points
-            }
-            expected_final_stones = [stone for stone in expected_atomic_stones if stone["point"] not in removed_points]
+            derived_occupancy, derived_ledger = _validate_settlement_closure(
+                atomic_event["stableOccupancy"],
+                pre_settlement_entries,
+                settlement,
+                previous_state["boardSize"],
+            )
+            if current_state["occupancy"] != derived_occupancy:
+                _raise(
+                    "semantic-invariant",
+                    "settlement result occupancy differs from independently derived closure",
+                )
+            if current_state["ledger"] != derived_ledger:
+                _raise(
+                    "semantic-invariant",
+                    "settlement result ledger differs from independently derived lifecycle",
+                )
+            atomic_sets = _occupancy_sets(atomic_event["stableOccupancy"])
+            derived_sets = _occupancy_sets(derived_occupancy)
+            removed_points = (
+                atomic_sets["BLACK"]
+                | atomic_sets["WHITE"]
+            ) - (
+                derived_sets["BLACK"]
+                | derived_sets["WHITE"]
+            )
+            expected_final_stones = [
+                stone
+                for stone in expected_atomic_stones
+                if stone["point"] not in removed_points
+            ]
             if current_state["stones"] != expected_final_stones:
-                _raise("semantic-invariant", "settlement may only remove atomic-stable stones and must preserve surviving provenance")
+                _raise("semantic-invariant", "settlement may only remove independently derived closure stones and must preserve surviving provenance")
         if action_kind == "PASS":
             empty = {"black": [], "white": []}
             if atomic_event["captured"] != empty:
@@ -2695,6 +2934,7 @@ def verify_examples(catalog: SchemaCatalog, digest: str, example_dir: Path = EXA
         "semantic-projection-v1.example.json": "semantic-projection-v1",
         "conformance-fixture-v1.example.json": "conformance-fixture-v1",
         "conformance-fixture-double-settlement-v1.example.json": "conformance-fixture-v1",
+        "conformance-fixture-immortal-true-eye-settlement-v1.example.json": "conformance-fixture-v1",
         "mismatch-bundle-v1.example.json": "mismatch-bundle-v1",
     }
     actual_names = {path.name for path in example_dir.glob("*.json")}

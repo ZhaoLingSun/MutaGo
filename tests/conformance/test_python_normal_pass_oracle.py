@@ -675,30 +675,25 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
         )
         self.assertIs(state_with_prior_repeat, transition.state)
 
-    def test_nonzero_potentially_legal_remaining_specials_are_unsupported(self) -> None:
+    def test_nonzero_potentially_legal_eightway_is_unsupported(self) -> None:
         state = new_game(OracleConfig(board_size=9))
-        for kind, x in (
-            (ActionKind.IMMORTAL, 0),
-            (ActionKind.EIGHTWAY, 2),
-        ):
-            with self.subTest(kind=kind):
-                with self.assertRaises(UnsupportedSliceAction) as caught:
-                    apply_action(
-                        state,
-                        Color.BLACK,
-                        action(kind, x=x, y=0),
-                    )
-                self.assertEqual(kind, caught.exception.action.kind)
-                self.assertEqual(Color.BLACK, caught.exception.actor)
-                self.assertEqual(0, state.atomic_action_count)
-                self.assertEqual((Occupancy.empty(),), state.psk_history)
+        with self.assertRaises(UnsupportedSliceAction) as caught:
+            apply_action(
+                state,
+                Color.BLACK,
+                action(ActionKind.EIGHTWAY, x=2, y=0),
+            )
+        self.assertEqual(ActionKind.EIGHTWAY, caught.exception.action.kind)
+        self.assertEqual(Color.BLACK, caught.exception.actor)
+        self.assertEqual(0, state.atomic_action_count)
+        self.assertEqual((Occupancy.empty(),), state.psk_history)
 
     def test_per_player_nonzero_quota_and_ordinary_special_phase(self) -> None:
         config = OracleConfig(
             board_size=9,
             quotas=PlayerQuotas(
                 black=SpecialQuotas.zero(),
-                white=SpecialQuotas(immortal=1, double_start=0, eightway=0),
+                white=SpecialQuotas(immortal=0, double_start=0, eightway=1),
             ),
         )
         state = new_game(config)
@@ -711,7 +706,7 @@ class PrecedenceAndSpecialSliceTests(unittest.TestCase):
             apply_action(
                 state,
                 Color.WHITE,
-                action(ActionKind.IMMORTAL, x=0, y=0),
+                action(ActionKind.EIGHTWAY, x=0, y=0),
             )
 
         ordinary = enter_empty_ledger_ordinary(config).state

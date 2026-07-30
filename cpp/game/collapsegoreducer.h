@@ -23,7 +23,16 @@ enum class CollapseGoApplyError {
   UNSUPPORTED_BY_SLICE,
 };
 
+struct CollapseGoRemovalBatch {
+  std::vector<Loc> blackStones;
+  std::vector<Loc> whiteStones;
+
+  bool operator==(const CollapseGoRemovalBatch& other) const;
+  bool operator!=(const CollapseGoRemovalBatch& other) const;
+};
+
 struct CollapseGoSettlementStep {
+  int64_t stepIndex;
   int64_t specialLink;
   int64_t originActionNumber;
   Player owner;
@@ -31,8 +40,11 @@ struct CollapseGoSettlementStep {
   int sourcePoint;
   bool noOp;
   bool abilityDeactivated;
+  std::vector<CollapseGoRemovalBatch> removalBatches;
+  std::vector<uint8_t> stableOccupancy;
+  int64_t positionalSuperkoHistoryIndex;
 
-  explicit CollapseGoSettlementStep(const CollapseGoLedgerEntry& entry);
+  CollapseGoSettlementStep(const CollapseGoLedgerEntry& entry, int64_t settlementStepIndex);
 
   bool operator==(const CollapseGoSettlementStep& other) const;
   bool operator!=(const CollapseGoSettlementStep& other) const;
@@ -62,8 +74,9 @@ public:
 private:
   static CollapseGoApplyResult reject(CollapseGoApplyError error);
   static CollapseGoAbility abilityForAction(GameActionKind kind);
+  static void appendOccupancy(CollapseGoState& state, const std::vector<uint8_t>& occupancy);
   static void appendCurrentOccupancy(CollapseGoState& state);
-  static void markCapturedDoubleSources(
+  static void markCapturedSpecialSources(
     CollapseGoState& state,
     const CollapseGoPosition& previousPosition,
     const std::vector<int>& capturedPoints
@@ -73,6 +86,7 @@ private:
     CollapseGoSettlementReason reason,
     CollapseGoApplyResult& result
   );
+  static void completeSettlementIfTriggered(CollapseGoState& state, CollapseGoApplyResult& result);
   static CollapseGoScore scoreChineseArea(const CollapseGoPosition& position);
 };
 

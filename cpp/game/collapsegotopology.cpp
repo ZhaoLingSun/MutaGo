@@ -20,14 +20,33 @@ void forEachN4Point(int boardSize, int point, const Func& func) {
     func(point + boardSize);
 }
 
+vector<bool> getArmedImmortalAnchorMask(
+  const CollapseGoPosition& position,
+  const vector<int>& armedImmortalAnchors
+) {
+  vector<bool> mask(static_cast<size_t>(position.getPointCount()),false);
+  for(int point: armedImmortalAnchors) {
+    if(!position.isValidPoint(point))
+      throw StringError("Collapse Go armed Immortal anchor is off board");
+    if(mask[static_cast<size_t>(point)])
+      throw StringError("Collapse Go armed Immortal anchor list contains a duplicate point");
+    const CollapseGoCell& cell = position.getCell(point);
+    if(!cell.isOccupied() || cell.getSource().originKind != GameActionKind::IMMORTAL)
+      throw StringError("Collapse Go armed Immortal anchor does not reference an Immortal stone");
+    mask[static_cast<size_t>(point)] = true;
+  }
+  return mask;
+}
+
 }
 
 CollapseGoGroup::CollapseGoGroup()
-  : color(C_EMPTY), stones(), liberties()
+  : color(C_EMPTY), stones(), liberties(), protectedByImmortal(false)
 {}
 
 bool CollapseGoGroup::operator==(const CollapseGoGroup& other) const {
-  return color == other.color && stones == other.stones && liberties == other.liberties;
+  return color == other.color && stones == other.stones && liberties == other.liberties &&
+    protectedByImmortal == other.protectedByImmortal;
 }
 
 bool CollapseGoGroup::operator!=(const CollapseGoGroup& other) const {
@@ -41,8 +60,19 @@ CollapseGoTopology::CollapseGoTopology(int topologyBoardSize)
 {}
 
 CollapseGoTopology CollapseGoTopology::fullScanN4(const CollapseGoPosition& position) {
+  return fullScanN4(position,vector<int>());
+}
+
+CollapseGoTopology CollapseGoTopology::fullScanN4(
+  const CollapseGoPosition& position,
+  const vector<int>& armedImmortalAnchors
+) {
   const int boardSize = position.getBoardSize();
   const int pointCount = position.getPointCount();
+  vector<bool> armedImmortalAnchorMask = getArmedImmortalAnchorMask(
+    position,armedImmortalAnchors
+  );
+
   CollapseGoTopology topology(boardSize);
   vector<bool> visited(static_cast<size_t>(pointCount),false);
   vector<bool> libertySeen(static_cast<size_t>(pointCount),false);
@@ -64,6 +94,8 @@ CollapseGoTopology CollapseGoTopology::fullScanN4(const CollapseGoPosition& posi
     for(size_t queueIndex = 0; queueIndex < queue.size(); queueIndex++) {
       int point = queue[queueIndex];
       group.stones.push_back(point);
+      if(armedImmortalAnchorMask[static_cast<size_t>(point)])
+        group.protectedByImmortal = true;
       forEachN4Point(boardSize,point,[&](int adjacent) {
         Color adjacentColor = position.getColor(adjacent);
         if(adjacentColor == C_EMPTY)
@@ -91,7 +123,7 @@ CollapseGoTopology CollapseGoTopology::fullScanN4(const CollapseGoPosition& posi
       topology.groupIndexByPoint[static_cast<size_t>(point)] = static_cast<int>(groupIndex);
   }
 
-  topology.checkConsistency(position);
+  topology.checkConsistency(position,armedImmortalAnchorMask);
   return topology;
 }
 
@@ -113,10 +145,26 @@ const CollapseGoGroup& CollapseGoTopology::getGroupAt(int point) const {
 }
 
 void CollapseGoTopology::checkConsistency(const CollapseGoPosition& position) const {
+  checkConsistency(position,vector<int>());
+}
+
+void CollapseGoTopology::checkConsistency(
+  const CollapseGoPosition& position,
+  const vector<int>& armedImmortalAnchors
+) const {
+  checkConsistency(position,getArmedImmortalAnchorMask(position,armedImmortalAnchors));
+}
+
+void CollapseGoTopology::checkConsistency(
+  const CollapseGoPosition& position,
+  const vector<bool>& armedImmortalAnchorMask
+) const {
   if(boardSize != position.getBoardSize())
     throw StringError("Collapse Go topology board size does not match its position");
   if(groupIndexByPoint.size() != static_cast<size_t>(position.getPointCount()))
     throw StringError("Collapse Go topology point index has the wrong size");
+  if(armedImmortalAnchorMask.size() != static_cast<size_t>(position.getPointCount()))
+    throw StringError("Collapse Go topology armed Immortal anchor mask has the wrong size");
 
   vector<bool> stoneSeen(static_cast<size_t>(position.getPointCount()),false);
   int previousFirstStone = -1;
@@ -137,9 +185,12 @@ void CollapseGoTopology::checkConsistency(const CollapseGoPosition& position) co
     previousFirstStone = group.stones.front();
 
     vector<bool> expectedLiberties(static_cast<size_t>(position.getPointCount()),false);
+    bool expectedProtected = false;
     for(int point: group.stones) {
       if(!position.isValidPoint(point) || position.getColor(point) != group.color)
         throw StringError("Collapse Go topology group stone does not match the position");
+      if(armedImmortalAnchorMask[static_cast<size_t>(point)])
+        expectedProtected = true;
       if(stoneSeen[static_cast<size_t>(point)])
         throw StringError("Collapse Go topology stone appears in multiple groups");
       stoneSeen[static_cast<size_t>(point)] = true;
@@ -161,6 +212,8 @@ void CollapseGoTopology::checkConsistency(const CollapseGoPosition& position) co
     }
     if(group.liberties != expectedLibertyList)
       throw StringError("Collapse Go topology liberty list is inconsistent with the position");
+    if(group.protectedByImmortal != expectedProtected)
+      throw StringError("Collapse Go topology Immortal protection is inconsistent with its anchors");
   }
 
   for(int point = 0; point < position.getPointCount(); point++) {

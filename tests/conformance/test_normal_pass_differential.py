@@ -234,6 +234,40 @@ class Sha256CounterGeneratorTests(unittest.TestCase):
         self.assertEqual(previous["whiteOccupancy"], rejected["whiteOccupancy"])
         self.assertEqual(previous["remainingQuotas"], rejected["remainingQuotas"])
 
+    def test_legacy_adapter_keeps_immortal_psk_mechanics_unsupported(self) -> None:
+        builder = diff._EpisodeBuilder.create("legacy-v0-immortal-psk", 9, "ONE")
+        for actor, x, y in (
+            (diff.Color.BLACK, 1, 2),
+            (diff.Color.WHITE, 1, 1),
+            (diff.Color.BLACK, 3, 2),
+            (diff.Color.WHITE, 3, 1),
+            (diff.Color.BLACK, 2, 3),
+            (diff.Color.WHITE, 2, 0),
+            (diff.Color.BLACK, 8, 8),
+            (diff.Color.WHITE, 2, 2),
+            (diff.Color.BLACK, 2, 1),
+        ):
+            builder.add(actor, diff.board_action_v1(9, x, y))
+        before = builder.state
+        action = diff.board_action_v1(9, 2, 2, diff.ActionKind.IMMORTAL)
+        with self.assertRaises(diff.UnsupportedSliceAction):
+            diff._apply_v0_slice_action(before, diff.Color.WHITE, action)
+        builder.add(diff.Color.WHITE, action)
+        self.assertIs(before, builder.state)
+        response = diff.oracle_episode_response(builder.request())
+        observation = response["observations"][-1]
+        self.assertEqual("UNSUPPORTED", observation["status"])
+        self.assertEqual("UNSUPPORTED_BY_SLICE", observation["errorCode"])
+        self.assertEqual(response["observations"][-2]["A"], observation["A"])
+        self.assertEqual(
+            response["observations"][-2]["blackOccupancy"],
+            observation["blackOccupancy"],
+        )
+        self.assertEqual(
+            response["observations"][-2]["whiteOccupancy"],
+            observation["whiteOccupancy"],
+        )
+
 
 class ProtocolTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -623,6 +657,35 @@ class ExecutableIntegrationTests(unittest.TestCase):
         self.assertEqual(previous["blackOccupancy"], rejected["blackOccupancy"])
         self.assertEqual(previous["whiteOccupancy"], rejected["whiteOccupancy"])
         self.assertEqual(previous["remainingQuotas"], rejected["remainingQuotas"])
+
+    def test_probe_keeps_immortal_psk_mechanics_legacy_unsupported(self) -> None:
+        builder = diff._EpisodeBuilder.create("cpp-v0-immortal-psk", 9, "ONE")
+        for actor, x, y in (
+            (diff.Color.BLACK, 1, 2),
+            (diff.Color.WHITE, 1, 1),
+            (diff.Color.BLACK, 3, 2),
+            (diff.Color.WHITE, 3, 1),
+            (diff.Color.BLACK, 2, 3),
+            (diff.Color.WHITE, 2, 0),
+            (diff.Color.BLACK, 8, 8),
+            (diff.Color.WHITE, 2, 2),
+            (diff.Color.BLACK, 2, 1),
+        ):
+            builder.add(actor, diff.board_action_v1(9, x, y))
+        builder.add(
+            diff.Color.WHITE,
+            diff.board_action_v1(9, 2, 2, diff.ActionKind.IMMORTAL),
+        )
+        request = builder.request()
+        completed = diff._run_probe_process(
+            [str(self.probe)], diff.canonical_json(request) + "\n", 5
+        )
+        self.assertEqual(0, completed.returncode)
+        self.assertEqual("", completed.stderr)
+        actual = diff.parse_canonical_response_line(completed.stdout[:-1], request)
+        expected = diff.oracle_episode_response(request)
+        self.assertEqual(expected, actual)
+        self.assertEqual("UNSUPPORTED", actual["observations"][-1]["status"])
 
     def test_probe_fails_closed_on_malformed_frame(self) -> None:
         completed = subprocess.run(

@@ -1,6 +1,7 @@
 #include "../tests/tests.h"
 
 #include <algorithm>
+#include <functional>
 #include <random>
 #include <set>
 
@@ -13,6 +14,20 @@ namespace {
 
 CollapseGoStoneSource normalSource(int64_t actionNumber) {
   return CollapseGoStoneSource(actionNumber,GameActionKind::NORMAL,nullopt);
+}
+
+CollapseGoStoneSource immortalSource(int64_t actionNumber) {
+  return CollapseGoStoneSource(actionNumber,GameActionKind::IMMORTAL,actionNumber);
+}
+
+void expectStringError(const function<void()>& operation) {
+  try {
+    operation();
+  }
+  catch(const StringError&) {
+    return;
+  }
+  throw StringError("Expected StringError, but operation succeeded");
 }
 
 void placeExact(
@@ -274,6 +289,66 @@ void Tests::runCollapseTopologyTests() {
       transformedTopology.getGroups() ==
       transformedGroups(curatedTopology.getGroups(),curated.getBoardSize(),symmetry)
     );
+  }
+
+  // Armed Immortal anchors protect exactly their current N4 component under every D4 transform.
+  {
+    CollapseGoPosition protectedPosition(9);
+    protectedPosition.placeStone(1,1,P_BLACK,immortalSource(1));
+    placeExact(protectedPosition,2,1,P_BLACK,2);
+    placeExact(protectedPosition,3,1,P_BLACK,3);
+    CollapseGoTopology protectedTopology = CollapseGoTopology::fullScanN4(
+      protectedPosition,vector<int>({10})
+    );
+    testAssert(protectedTopology.getGroups().size() == 1);
+    testAssert(protectedTopology.getGroups()[0].stones == vector<int>({10,11,12}));
+    testAssert(protectedTopology.getGroups()[0].protectedByImmortal);
+
+    for(int symmetry = 0; symmetry < 8; symmetry++) {
+      CollapseGoPosition transformed = transformedPosition(protectedPosition,symmetry);
+      vector<int> transformedAnchors({transformPoint(9,10,symmetry)});
+      CollapseGoTopology transformedTopology = CollapseGoTopology::fullScanN4(
+        transformed,transformedAnchors
+      );
+      testAssert(
+        transformedTopology.getGroups() ==
+        transformedGroups(protectedTopology.getGroups(),9,symmetry)
+      );
+    }
+
+    // A full rebuild after a bridge disappears protects only the anchor-containing fragment.
+    protectedPosition.removeStone(11);
+    CollapseGoTopology splitTopology = CollapseGoTopology::fullScanN4(
+      protectedPosition,vector<int>({10})
+    );
+    testAssert(splitTopology.getGroups().size() == 2);
+    testAssert(splitTopology.getGroupAt(10).protectedByImmortal);
+    testAssert(!splitTopology.getGroupAt(12).protectedByImmortal);
+  }
+
+  // Zero-liberty protection and malformed anchor lists are explicit topology invariants.
+  {
+    CollapseGoPosition zeroLiberty(9);
+    zeroLiberty.placeStone(2,2,P_BLACK,immortalSource(1));
+    placeExact(zeroLiberty,2,1,P_WHITE,2);
+    placeExact(zeroLiberty,1,2,P_WHITE,3);
+    placeExact(zeroLiberty,3,2,P_WHITE,4);
+    placeExact(zeroLiberty,2,3,P_WHITE,5);
+    CollapseGoTopology topology = CollapseGoTopology::fullScanN4(
+      zeroLiberty,vector<int>({20})
+    );
+    const CollapseGoGroup& group = topology.getGroupAt(20);
+    testAssert(group.liberties.empty());
+    testAssert(group.protectedByImmortal);
+    expectStringError([&]() {
+      CollapseGoTopology::fullScanN4(zeroLiberty,vector<int>({20,20}));
+    });
+    expectStringError([&]() {
+      CollapseGoTopology::fullScanN4(zeroLiberty,vector<int>({81}));
+    });
+    expectStringError([&]() {
+      CollapseGoTopology::fullScanN4(zeroLiberty,vector<int>({11}));
+    });
   }
 
   // Curated capture, suicide, and PSK cases agree with upstream Board in pure N4 mode.

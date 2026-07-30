@@ -167,6 +167,36 @@ class CoverageAndDeterministicReexecutionTests(unittest.TestCase):
         )
         self.assertEqual({"THRESHOLD", "PRE_THRESHOLD_TWO_PASSES"}, reasons)
 
+    def test_immortal_mechanical_psk_remains_legacy_unsupported_and_rolls_back(self) -> None:
+        builder = diff.EpisodeBuilder.create("legacy-v1-immortal-psk", 9)
+        for actor, x, y in (
+            (diff.Color.BLACK, 1, 2),
+            (diff.Color.WHITE, 1, 1),
+            (diff.Color.BLACK, 3, 2),
+            (diff.Color.WHITE, 3, 1),
+            (diff.Color.BLACK, 2, 3),
+            (diff.Color.WHITE, 2, 0),
+            (diff.Color.BLACK, 8, 8),
+            (diff.Color.WHITE, 2, 2),
+            (diff.Color.BLACK, 2, 1),
+        ):
+            transition = builder.add(actor, diff.board_action_v1(9, x, y))
+            self.assertIsNotNone(transition)
+            self.assertTrue(transition.accepted)
+        before = builder.state
+        self.assertIsNone(
+            builder.add(
+                diff.Color.WHITE,
+                diff.board_action_v1(9, 2, 2, diff.ActionKind.IMMORTAL),
+            )
+        )
+        self.assertIs(before, builder.state)
+        response = diff.oracle_episode_response(builder.request())
+        observation = response["observations"][-1]
+        self.assertEqual("UNSUPPORTED", observation["transition"]["status"])
+        self.assertEqual("UNSUPPORTED_BY_SLICE", observation["transition"]["errorCode"])
+        self.assertEqual(response["observations"][-2]["state"], observation["state"])
+
     def test_captured_double_source_and_noop_settlement_remain_auditable(self) -> None:
         response = self.responses["curated-d4-capture-9-0"]
         capture = response["observations"][8]
@@ -730,6 +760,32 @@ class ExecutableIntegrationTests(unittest.TestCase):
         responses, _ = diff.run_probe_requests(self.probe, [request])
         expected = diff.normalize_contract_fixture()
         diff.compare_exact(expected, responses[0], episode_id=request["episodeId"])
+
+    def test_cpp_keeps_immortal_psk_mechanics_legacy_unsupported(self) -> None:
+        builder = diff.EpisodeBuilder.create("cpp-v1-immortal-psk", 9)
+        for actor, x, y in (
+            (diff.Color.BLACK, 1, 2),
+            (diff.Color.WHITE, 1, 1),
+            (diff.Color.BLACK, 3, 2),
+            (diff.Color.WHITE, 3, 1),
+            (diff.Color.BLACK, 2, 3),
+            (diff.Color.WHITE, 2, 0),
+            (diff.Color.BLACK, 8, 8),
+            (diff.Color.WHITE, 2, 2),
+            (diff.Color.BLACK, 2, 1),
+        ):
+            builder.add(actor, diff.board_action_v1(9, x, y))
+        builder.add(
+            diff.Color.WHITE,
+            diff.board_action_v1(9, 2, 2, diff.ActionKind.IMMORTAL),
+        )
+        request = builder.request()
+        expected = diff.oracle_episode_response(request)
+        responses, _ = diff.run_probe_requests(self.probe, [request])
+        diff.compare_exact(expected, responses[0], episode_id=request["episodeId"])
+        self.assertEqual(
+            "UNSUPPORTED", responses[0]["observations"][-1]["transition"]["status"]
+        )
 
     def test_cpp_action_reexecution_and_prefixes_are_immutable_at_pending_and_settlement_boundaries(self) -> None:
         full = diff.fixture_request()

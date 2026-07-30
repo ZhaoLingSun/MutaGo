@@ -9,6 +9,7 @@ struct CollapseGoGroup {
   Color color;
   std::vector<int> stones;
   std::vector<int> liberties;
+  bool protectedByImmortal;
 
   CollapseGoGroup();
 
@@ -18,16 +19,21 @@ struct CollapseGoGroup {
 
 class CollapseGoTopology {
 public:
-  // Increment 0 deliberately scans only ordinary orthogonal connectivity.
-  // A future mixed-interface scanner can be added without changing the exact
-  // position or the deterministic result representation.
   static CollapseGoTopology fullScanN4(const CollapseGoPosition& position);
+  static CollapseGoTopology fullScanN4(
+    const CollapseGoPosition& position,
+    const std::vector<int>& armedImmortalAnchors
+  );
 
   const std::vector<CollapseGoGroup>& getGroups() const;
   int getGroupIndexAt(int point) const;
   const CollapseGoGroup& getGroupAt(int point) const;
 
   void checkConsistency(const CollapseGoPosition& position) const;
+  void checkConsistency(
+    const CollapseGoPosition& position,
+    const std::vector<int>& armedImmortalAnchors
+  ) const;
 
 private:
   int boardSize;
@@ -35,6 +41,10 @@ private:
   std::vector<int> groupIndexByPoint;
 
   explicit CollapseGoTopology(int topologyBoardSize);
+  void checkConsistency(
+    const CollapseGoPosition& position,
+    const std::vector<bool>& armedImmortalAnchorMask
+  ) const;
 };
 
 #endif // GAME_COLLAPSEGOTOPOLOGY_H_
