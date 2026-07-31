@@ -28,12 +28,15 @@ const string DOUBLE_PROTOCOL_VERSION = "double-move-diff-v1-unfrozen";
 const string IMMORTAL_PROTOCOL_VERSION = "immortal-diff-v2-unfrozen";
 const string EIGHTWAY_PROTOCOL_VERSION = "eightway-diff-v3-unfrozen";
 const string FULL_RULE_PROTOCOL_VERSION = "full-rule-diff-v4-unfrozen";
+const string ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION =
+  "administrative-termination-diff-v5-unfrozen";
 constexpr size_t MAX_REQUEST_FRAME_BYTES = 1024 * 1024;
 constexpr size_t MAX_LEGACY_RESPONSE_FRAME_BYTES = 16 * 1024 * 1024;
 constexpr size_t MAX_DOUBLE_RESPONSE_FRAME_BYTES = 32 * 1024 * 1024;
 constexpr size_t MAX_IMMORTAL_RESPONSE_FRAME_BYTES = 64 * 1024 * 1024;
 constexpr size_t MAX_EIGHTWAY_RESPONSE_FRAME_BYTES = 96 * 1024 * 1024;
 constexpr size_t MAX_FULL_RULE_RESPONSE_FRAME_BYTES = 96 * 1024 * 1024;
+constexpr size_t MAX_ADMINISTRATIVE_TERMINATION_RESPONSE_FRAME_BYTES = 96 * 1024 * 1024;
 constexpr size_t MAX_EPISODE_STEPS = 160;
 constexpr int MAX_TEST_QUOTA = 4;
 
@@ -665,6 +668,78 @@ json fullRuleStateJson(const CollapseGoState& state) {
   return projected;
 }
 
+string administrativeTerminalReasonString(CollapseGoTerminalReason reason) {
+  switch(reason) {
+  case CollapseGoTerminalReason::SCORE: return "SCORE";
+  case CollapseGoTerminalReason::RESIGNATION: return "RESIGNATION";
+  case CollapseGoTerminalReason::TIMEOUT: return "TIMEOUT";
+  default:
+    throw StringError("Unexpected terminal reason in administrative-termination projection");
+  }
+}
+
+json administrativeTerminalStateJson(const CollapseGoState& state) {
+  if(!state.getTerminalState().has_value()) {
+    return json{
+      {"ended",false},
+      {"loser",nullptr},
+      {"reason",nullptr},
+      {"score",nullptr},
+      {"winner",nullptr},
+    };
+  }
+
+  const CollapseGoTerminalState& terminal = *state.getTerminalState();
+  json score = nullptr;
+  if(terminal.reason == CollapseGoTerminalReason::SCORE) {
+    const CollapseGoScore& result = state.getScore();
+    if(!result.isScored)
+      throw StringError("Scored terminal state is missing its score");
+    score = json{
+      {"black",rationalJson(result.blackScoreNumerator)},
+      {"margin",rationalJson(result.marginNumerator)},
+      {"white",rationalJson(result.whiteScoreNumerator)},
+    };
+  }
+  else if(state.getScore().isScored)
+    throw StringError("Administrative terminal state cannot contain a score");
+
+  return json{
+    {"ended",true},
+    {"loser",playerJson(terminal.loser)},
+    {"reason",administrativeTerminalReasonString(terminal.reason)},
+    {"score",score},
+    {"winner",playerJson(terminal.winner)},
+  };
+}
+
+json administrativeLegalActionRangesJson(const CollapseGoState& state) {
+  CollapseGoLegalMask mask = CollapseGoReducer::deriveLegalMask(state);
+  json ranges = json::array();
+  int first = -1;
+  for(int actionId = 0; actionId < GameAction::FLAT_ACTION_COUNT; actionId++) {
+    if(mask.test(static_cast<size_t>(actionId))) {
+      if(first < 0)
+        first = actionId;
+    }
+    else if(first >= 0) {
+      ranges.push_back(json{{"first",first},{"last",actionId - 1}});
+      first = -1;
+    }
+  }
+  if(first >= 0)
+    ranges.push_back(json{{"first",first},{"last",GameAction::FLAT_ACTION_COUNT - 1}});
+  return ranges;
+}
+
+json administrativeTerminationStateJson(const CollapseGoState& state) {
+  json projected = eightwayStateJson(state);
+  projected["legalActionRanges"] = administrativeLegalActionRangesJson(state);
+  projected["settlementCompleted"] = state.isSettlementCompleted();
+  projected["terminal"] = administrativeTerminalStateJson(state);
+  return projected;
+}
+
 json exactStateJson(const CollapseGoState& state) {
   return json{
     {"actor",playerJson(state.getActor())},
@@ -818,16 +893,24 @@ json terminalEventJson(
   const CollapseGoState& after,
   const CollapseGoApplyResult& result
 ) {
-  if(!result.terminalScoreEventEmitted)
+  if(!result.terminalScoreEventEmitted) {
+    if(result.terminalEvent.has_value())
+      throw StringError("Non-scoring ACTION transition emitted a typed terminal event");
     return nullptr;
-  const CollapseGoScore& score = after.getScore();
+  }
+  if(!result.terminalEvent.has_value())
+    throw StringError("Scoring ACTION transition is missing its typed terminal event");
+  const CollapseGoTerminalEvent& event = *result.terminalEvent;
+  event.validateAgainstCommittedState(after);
+  if(event.reason != CollapseGoTerminalReason::SCORE || !event.score.isScored)
+    throw StringError("Scoring ACTION transition emitted a non-score terminal event");
   return json{
-    {"eventId","terminal-" + to_string(after.getLogPosition())},
-    {"loser",playerJson(getOpp(score.winner))},
-    {"pskHistoryIndex",static_cast<int64_t>(after.getPositionalSuperkoHistory().size() - 1)},
+    {"eventId","terminal-" + to_string(event.logPosition)},
+    {"loser",playerJson(event.loser)},
+    {"pskHistoryIndex",event.positionalSuperkoHistoryIndex},
     {"reason","SCORE"},
-    {"stableOccupancy",positionOccupancyJson(after.getPosition())},
-    {"winner",playerJson(score.winner)},
+    {"stableOccupancy",positionOccupancyJson(event.stablePosition)},
+    {"winner",playerJson(event.winner)},
   };
 }
 
@@ -910,6 +993,53 @@ json immortalTransitionJson(
     {"status",status},
     {"terminalEvent",terminalEventJson(after,result)},
     {"transitionKind",transitionKind},
+  };
+}
+
+json administrativeImmediateTerminalEventJson(
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result
+) {
+  if(!result.accepted)
+    return nullptr;
+  if(!result.terminalEvent.has_value())
+    throw StringError("Accepted administrative termination is missing its typed terminal event");
+  const CollapseGoTerminalEvent& event = *result.terminalEvent;
+  if(event.reason != CollapseGoTerminalReason::RESIGNATION &&
+     event.reason != CollapseGoTerminalReason::TIMEOUT)
+    throw StringError("Administrative termination emitted a non-administrative terminal reason");
+  if(event.score.isScored)
+    throw StringError("Administrative termination event cannot contain a score");
+  event.validateAgainstCommittedState(after);
+  return json{
+    {"eventId","terminal-" + to_string(event.logPosition)},
+    {"logPosition",event.logPosition},
+    {"loser",playerJson(event.loser)},
+    {"pskHistoryIndex",event.positionalSuperkoHistoryIndex},
+    {"reason",administrativeTerminalReasonString(event.reason)},
+    {"revision",event.revision},
+    {"settlementCompleted",event.settlementCompleted},
+    {"stableOccupancy",positionOccupancyJson(event.stablePosition)},
+    {"stableStones",stonesJson(event.stablePosition)},
+    {"winner",playerJson(event.winner)},
+  };
+}
+
+json administrativeTerminationTransitionJson(
+  const CollapseGoState& after,
+  const CollapseGoApplyResult& result,
+  Player candidateActor,
+  const json& candidate
+) {
+  return json{
+    {"accepted",result.accepted},
+    {"candidate",candidate},
+    {"candidateActor",playerJson(candidateActor)},
+    {"errorCode",result.accepted ? json(nullptr) : json(result.getErrorCode())},
+    {"positionalSuperkoAppends",result.positionalSuperkoAppends},
+    {"status",result.accepted ? "ACCEPTED" : "REJECTED"},
+    {"terminalEvent",administrativeImmediateTerminalEventJson(after,result)},
+    {"transitionKind",result.accepted ? "IMMEDIATE_TERMINAL" : "REJECTED"},
   };
 }
 
@@ -1139,6 +1269,85 @@ json processFullRuleRequest(const json& request) {
   };
 }
 
+json processAdministrativeTerminationRequest(const json& request) {
+  requireExactFields(
+    request,
+    {"protocolVersion","episodeId","boardSize","initialQuotas","steps"},
+    "Administrative-termination episode request"
+  );
+  if(requireString(request.at("protocolVersion"),"protocolVersion") !=
+     ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION)
+    failFrame("protocolVersion must be " + ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION);
+
+  string episodeId = requireString(request.at("episodeId"),"episodeId");
+  validateEpisodeId(episodeId);
+  CollapseGoState state(parseDoubleConfig(request));
+  json initialState = administrativeTerminationStateJson(state);
+
+  const json& steps = request.at("steps");
+  if(!steps.is_array() || steps.empty() || steps.size() > MAX_EPISODE_STEPS)
+    failFrame("steps must be a nonempty array within the test-only resource limit");
+
+  json observations = json::array();
+  for(size_t i = 0; i < steps.size(); i++) {
+    const json& step = steps.at(i);
+    requireExactFields(
+      step,{"candidateActor","candidate"},
+      "Administrative-termination step " + Global::sizeToString(i)
+    );
+    Player candidateActor = parseCandidateActor(step.at("candidateActor"));
+    const json& candidateIntent = step.at("candidate");
+    if(!candidateIntent.is_object() || candidateIntent.find("kind") == candidateIntent.end())
+      failFrame("administrative candidate must be a closed candidate object");
+    string candidateKind = requireString(candidateIntent.at("kind"),"candidate.kind");
+
+    CollapseGoState before(state);
+    CollapseGoState candidateState(state);
+    CollapseGoApplyResult result;
+    json transition;
+    if(candidateKind == "ACTION") {
+      requireExactFields(candidateIntent,{"kind","action"},"ACTION candidate");
+      GameAction action = GameAction::ofJson(candidateIntent.at("action"));
+      result = CollapseGoReducer::apply(candidateState,candidateActor,action);
+      if(result.accepted)
+        state = candidateState;
+      transition = immortalTransitionJson(
+        before,state,result,candidateActor,action,candidateIntent.at("action"),true
+      );
+    }
+    else {
+      requireExactFields(candidateIntent,{"kind"},"administrative candidate");
+      CollapseGoAdministrativeTerminationReason reason;
+      if(candidateKind == "RESIGNATION")
+        reason = CollapseGoAdministrativeTerminationReason::RESIGNATION;
+      else if(candidateKind == "TIMEOUT")
+        reason = CollapseGoAdministrativeTerminationReason::TIMEOUT;
+      else
+        failFrame("candidate.kind must be ACTION, RESIGNATION, or TIMEOUT");
+      result = CollapseGoReducer::terminate(candidateState,candidateActor,reason);
+      if(result.accepted)
+        state = candidateState;
+      transition = administrativeTerminationTransitionJson(
+        state,result,candidateActor,candidateIntent
+      );
+    }
+
+    state.checkConsistency();
+    observations.push_back(json{
+      {"state",administrativeTerminationStateJson(state)},
+      {"stepIndex",static_cast<int64_t>(i + 1)},
+      {"transition",transition},
+    });
+  }
+
+  return json{
+    {"episodeId",episodeId},
+    {"initialState",initialState},
+    {"observations",observations},
+    {"protocolVersion",ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION},
+  };
+}
+
 json processFrame(const string& line) {
   json request = RulesetIdentity::parseRestrictedJson(line);
   const string canonicalRequest = RulesetIdentity::canonicalizeRestrictedJson(request);
@@ -1151,6 +1360,9 @@ json processFrame(const string& line) {
     failFrame("Eightway v3 request must be canonical restricted-profile JSON");
   if(protocolVersion == FULL_RULE_PROTOCOL_VERSION && canonicalRequest != line)
     failFrame("Full-rule v4 request must be canonical restricted-profile JSON");
+  if(protocolVersion == ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION &&
+     canonicalRequest != line)
+    failFrame("Administrative-termination v5 request must be canonical restricted-profile JSON");
   if(protocolVersion == LEGACY_PROTOCOL_VERSION)
     return processLegacyRequest(request);
   if(protocolVersion == DOUBLE_PROTOCOL_VERSION)
@@ -1161,10 +1373,14 @@ json processFrame(const string& line) {
     return processEightwayRequest(request);
   if(protocolVersion == FULL_RULE_PROTOCOL_VERSION)
     return processFullRuleRequest(request);
+  if(protocolVersion == ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION)
+    return processAdministrativeTerminationRequest(request);
   failFrame("unsupported protocolVersion " + protocolVersion);
 }
 
 size_t responseLimit(const json& response) {
+  if(response.at("protocolVersion") == ADMINISTRATIVE_TERMINATION_PROTOCOL_VERSION)
+    return MAX_ADMINISTRATIVE_TERMINATION_RESPONSE_FRAME_BYTES;
   if(response.at("protocolVersion") == FULL_RULE_PROTOCOL_VERSION)
     return MAX_FULL_RULE_RESPONSE_FRAME_BYTES;
   if(response.at("protocolVersion") == EIGHTWAY_PROTOCOL_VERSION)

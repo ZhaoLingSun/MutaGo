@@ -16,6 +16,7 @@ enum class CollapseGoApplyError {
   POINT_OFF_BOARD,
   TERMINAL_STATE,
   INVALID_PHASE,
+  INVALID_LOSER,
   WRONG_ACTOR,
   DOUBLE_CONTINUATION_KIND_FORBIDDEN,
   DOUBLE_THRESHOLD,
@@ -54,6 +55,33 @@ struct CollapseGoSettlementStep {
   bool operator!=(const CollapseGoSettlementStep& other) const;
 };
 
+struct CollapseGoTerminalEvent {
+  CollapseGoTerminalReason reason;
+  Player winner;
+  Player loser;
+  CollapseGoScore score;
+  bool settlementCompleted;
+  CollapseGoPosition stablePosition;
+  std::vector<uint8_t> stableOccupancy;
+  int64_t positionalSuperkoHistoryIndex;
+  int64_t revision;
+  int64_t logPosition;
+
+  CollapseGoTerminalEvent(const CollapseGoTerminalEvent&) = default;
+  CollapseGoTerminalEvent(CollapseGoTerminalEvent&&) = default;
+  CollapseGoTerminalEvent& operator=(const CollapseGoTerminalEvent&) = default;
+  CollapseGoTerminalEvent& operator=(CollapseGoTerminalEvent&&) = default;
+
+  static CollapseGoTerminalEvent fromCommittedState(const CollapseGoState& committedState);
+  void validateAgainstCommittedState(const CollapseGoState& committedState) const;
+
+  bool operator==(const CollapseGoTerminalEvent& other) const;
+  bool operator!=(const CollapseGoTerminalEvent& other) const;
+
+private:
+  explicit CollapseGoTerminalEvent(const CollapseGoState& committedState);
+};
+
 struct CollapseGoApplyResult {
   bool accepted;
   CollapseGoApplyError error;
@@ -62,6 +90,7 @@ struct CollapseGoApplyResult {
   std::vector<CollapseGoSettlementStep> settlementSteps;
   bool settlementTriggered;
   CollapseGoSettlementReason settlementReason;
+  std::optional<CollapseGoTerminalEvent> terminalEvent;
   bool terminalScoreEventEmitted;
   int positionalSuperkoAppends;
 
@@ -78,6 +107,11 @@ class CollapseGoReducer {
 public:
   [[nodiscard]] static CollapseGoLegalMask deriveLegalMask(const CollapseGoState& state);
   static CollapseGoApplyResult apply(CollapseGoState& state, Player actor, const GameAction& action);
+  static CollapseGoApplyResult terminate(
+    CollapseGoState& state,
+    Player loser,
+    CollapseGoAdministrativeTerminationReason reason
+  );
 
 private:
   struct LegalityContext;
@@ -106,7 +140,6 @@ private:
     CollapseGoApplyResult& result
   );
   static void completeSettlementIfTriggered(CollapseGoState& state, CollapseGoApplyResult& result);
-  static CollapseGoScore scoreChineseArea(const CollapseGoPosition& position);
 
   friend class CollapseGoReducerTestAccess;
 };

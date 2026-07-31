@@ -430,17 +430,39 @@ def global_settlement_checkpoint() -> OracleState:
         ),
     )
     config = OracleConfig(board_size=size)
-    history = [Occupancy.empty() for _ in range(action_count + 1)]
-    history[1] = Occupancy(white=(old_double,))
-    history[3] = Occupancy(white=tuple(sorted((immortal, old_double))))
-    history[4] = Occupancy(
-        white=tuple(sorted((immortal, eightway, old_double)))
-    )
-    history[5] = Occupancy(
-        black=(point(size, 8, 8),),
-        white=tuple(sorted((immortal, eightway, old_double))),
-    )
-    history[-1] = board.occupancy
+    history = [Occupancy.empty()]
+    black_history: set[int] = set()
+    white_history: set[int] = set()
+    stones_by_action = {
+        stone.origin_action_number: stone for stone in board.stones
+    }
+    captured_double = point(size, 8, 8)
+    for action_number in range(1, action_count + 1):
+        if action_number == 1:
+            white_history.add(old_double)
+        elif action_number == 3:
+            white_history.add(immortal)
+        elif action_number == 4:
+            white_history.add(eightway)
+        elif action_number == 5:
+            black_history.add(captured_double)
+        else:
+            stone = stones_by_action.get(action_number)
+            if stone is not None:
+                if action_number == 6:
+                    black_history.discard(captured_double)
+                target = (
+                    black_history
+                    if stone.color is Color.BLACK
+                    else white_history
+                )
+                target.add(stone.point)
+        history.append(
+            Occupancy(
+                black=tuple(sorted(black_history)),
+                white=tuple(sorted(white_history)),
+            )
+        )
     return replace(
         new_game(config),
         board=board,
@@ -479,13 +501,19 @@ def fabricated_settled_captured_event_state(
         if kind is ActionKind.IMMORTAL
         else SpecialQuotas(immortal=1, double_start=1, eightway=0)
     )
-    history = [Occupancy.empty() for _ in range(origin_action_number + 2)]
-    history[origin_action_number] = Occupancy(black=(0,))
+    history = [Occupancy.empty()]
+    history.extend(
+        Occupancy(black=(action_number,))
+        for action_number in range(1, origin_action_number)
+    )
+    history.append(Occupancy(black=(0,)))
+    history.append(Occupancy.empty())
     return replace(
         new_game(config),
         board=Board.empty(size),
         actor=Color.WHITE,
         phase=Phase.ORDINARY_PLAY,
+        settlement_completed=True,
         atomic_action_count=origin_action_number,
         remaining_quotas=PlayerQuotas.zero(),
         used_quotas=PlayerQuotas(
@@ -1083,21 +1111,31 @@ class DeterminismD4AndConstructorTests(unittest.TestCase):
 
     def test_deterministic_suffix_execution_from_prefix_copies(self) -> None:
         episode = rich_episode(9)
+        full_state, full_transitions = execute_episode(9, episode)
+
         state = new_game(OracleConfig(board_size=9))
-        for actor, envelope in episode[:3]:
+        prefix_length = 3
+        for actor, envelope in episode[:prefix_length]:
             state = accept(state, actor, envelope).state
+        checkpoint_snapshot = copy.deepcopy(state)
+        self.assertEqual(full_transitions[prefix_length - 1].state, state)
+
         checkpoints = (state, replace(state), copy.deepcopy(state))
         outcomes = []
         for checkpoint in checkpoints:
             current = checkpoint
             transitions = []
-            for actor, envelope in episode[3:]:
+            for actor, envelope in episode[prefix_length:]:
                 transition = accept(current, actor, envelope)
                 transitions.append(transition)
                 current = transition.state
             outcomes.append((current, tuple(transitions)))
-        self.assertEqual(outcomes[0], outcomes[1])
-        self.assertEqual(outcomes[0], outcomes[2])
+
+        expected = (full_state, full_transitions[prefix_length:])
+        for outcome in outcomes:
+            self.assertEqual(expected, outcome)
+        for checkpoint in checkpoints:
+            self.assertEqual(checkpoint_snapshot, checkpoint)
 
     def test_fabricated_eightway_lifecycle_source_and_suffix_errors_reject(self) -> None:
         live = accept(

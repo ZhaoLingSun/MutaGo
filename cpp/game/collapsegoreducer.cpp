@@ -10,20 +10,6 @@ using namespace std;
 
 namespace {
 
-template<typename Func>
-void forEachN4Point(int boardSize, int point, const Func& func) {
-  const int x = point % boardSize;
-  const int y = point / boardSize;
-  if(y > 0)
-    func(point - boardSize);
-  if(x > 0)
-    func(point - 1);
-  if(x + 1 < boardSize)
-    func(point + 1);
-  if(y + 1 < boardSize)
-    func(point + boardSize);
-}
-
 void expireRemainingQuotas(CollapseGoQuotas& remaining, CollapseGoQuotas& expired) {
   expired.immortal += remaining.immortal;
   expired.doubleMove += remaining.doubleMove;
@@ -166,6 +152,90 @@ bool CollapseGoSettlementStep::operator!=(const CollapseGoSettlementStep& other)
   return !(*this == other);
 }
 
+CollapseGoTerminalEvent::CollapseGoTerminalEvent(const CollapseGoState& committedState)
+  : reason(CollapseGoTerminalReason::SCORE),
+    winner(C_EMPTY),
+    loser(C_EMPTY),
+    score(),
+    settlementCompleted(false),
+    stablePosition(committedState.getPosition()),
+    stableOccupancy(),
+    positionalSuperkoHistoryIndex(-1),
+    revision(-1),
+    logPosition(-1)
+{
+  committedState.checkConsistency();
+  if(committedState.getPhase() != CollapseGoPhase::TERMINAL ||
+     !committedState.getTerminalState().has_value())
+    throw StringError("Collapse Go terminal event requires a committed terminal state");
+
+  const CollapseGoTerminalState& terminalState = *committedState.getTerminalState();
+  reason = terminalState.reason;
+  winner = terminalState.winner;
+  loser = terminalState.loser;
+  score = committedState.getScore();
+  settlementCompleted = committedState.isSettlementCompleted();
+  stableOccupancy = stablePosition.getRowMajorOccupancy();
+  positionalSuperkoHistoryIndex = static_cast<int64_t>(
+    committedState.getPositionalSuperkoHistory().size() - 1
+  );
+  revision = committedState.getRevision();
+  logPosition = committedState.getLogPosition();
+}
+
+CollapseGoTerminalEvent CollapseGoTerminalEvent::fromCommittedState(
+  const CollapseGoState& committedState
+) {
+  CollapseGoTerminalEvent event(committedState);
+  event.validateAgainstCommittedState(committedState);
+  return event;
+}
+
+void CollapseGoTerminalEvent::validateAgainstCommittedState(
+  const CollapseGoState& committedState
+) const {
+  committedState.checkConsistency();
+  if(committedState.getPhase() != CollapseGoPhase::TERMINAL ||
+     !committedState.getTerminalState().has_value())
+    throw StringError("Collapse Go terminal event requires a committed terminal state");
+
+  const CollapseGoTerminalState& terminalState = *committedState.getTerminalState();
+  if(reason != terminalState.reason || winner != terminalState.winner || loser != terminalState.loser)
+    throw StringError("Collapse Go terminal event result does not match the committed state");
+  if(score != committedState.getScore())
+    throw StringError("Collapse Go terminal event score does not match the committed state");
+  if(settlementCompleted != committedState.isSettlementCompleted())
+    throw StringError("Collapse Go terminal event settlement provenance does not match the committed state");
+  if(!stablePosition.isEqualForTesting(committedState.getPosition()))
+    throw StringError("Collapse Go terminal event source-aware position does not match the committed state");
+  if(stableOccupancy != stablePosition.getRowMajorOccupancy() ||
+     stableOccupancy != committedState.getPosition().getRowMajorOccupancy())
+    throw StringError("Collapse Go terminal event occupancy does not match the committed state");
+
+  const int64_t expectedHistoryIndex = static_cast<int64_t>(
+    committedState.getPositionalSuperkoHistory().size() - 1
+  );
+  if(positionalSuperkoHistoryIndex != expectedHistoryIndex)
+    throw StringError("Collapse Go terminal event PSK index does not match the committed state");
+  if(revision != committedState.getRevision())
+    throw StringError("Collapse Go terminal event revision does not match the committed state");
+  if(logPosition != committedState.getLogPosition())
+    throw StringError("Collapse Go terminal event log position does not match the committed state");
+}
+
+bool CollapseGoTerminalEvent::operator==(const CollapseGoTerminalEvent& other) const {
+  return reason == other.reason && winner == other.winner && loser == other.loser &&
+    score == other.score && settlementCompleted == other.settlementCompleted &&
+    stablePosition.isEqualForTesting(other.stablePosition) &&
+    stableOccupancy == other.stableOccupancy &&
+    positionalSuperkoHistoryIndex == other.positionalSuperkoHistoryIndex &&
+    revision == other.revision && logPosition == other.logPosition;
+}
+
+bool CollapseGoTerminalEvent::operator!=(const CollapseGoTerminalEvent& other) const {
+  return !(*this == other);
+}
+
 CollapseGoApplyResult::CollapseGoApplyResult()
   : accepted(false),
     error(CollapseGoApplyError::INTERNAL_INVARIANT),
@@ -174,6 +244,7 @@ CollapseGoApplyResult::CollapseGoApplyResult()
     settlementSteps(),
     settlementTriggered(false),
     settlementReason(CollapseGoSettlementReason::NONE),
+    terminalEvent(),
     terminalScoreEventEmitted(false),
     positionalSuperkoAppends(0)
 {}
@@ -193,6 +264,7 @@ string CollapseGoApplyResult::getErrorCode() const {
   case CollapseGoApplyError::POINT_OFF_BOARD: return "POINT_OFF_BOARD";
   case CollapseGoApplyError::TERMINAL_STATE: return "TERMINAL_STATE";
   case CollapseGoApplyError::INVALID_PHASE: return "INVALID_PHASE";
+  case CollapseGoApplyError::INVALID_LOSER: return "INVALID_LOSER";
   case CollapseGoApplyError::WRONG_ACTOR: return "WRONG_ACTOR";
   case CollapseGoApplyError::DOUBLE_CONTINUATION_KIND_FORBIDDEN: return "DOUBLE_CONTINUATION_KIND_FORBIDDEN";
   case CollapseGoApplyError::DOUBLE_THRESHOLD: return "DOUBLE_THRESHOLD";
@@ -557,72 +629,6 @@ void CollapseGoReducer::completeSettlementIfTriggered(
     completeLedgerSettlement(state,CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES,result);
 }
 
-CollapseGoScore CollapseGoReducer::scoreChineseArea(const CollapseGoPosition& position) {
-  CollapseGoScore score;
-  score.isScored = true;
-
-  const int pointCount = position.getPointCount();
-  const int boardSize = position.getBoardSize();
-  vector<bool> visited(static_cast<size_t>(pointCount),false);
-  vector<int> stack;
-  stack.reserve(static_cast<size_t>(pointCount));
-
-  for(int point = 0; point < pointCount; point++) {
-    Color color = position.getColor(point);
-    if(color == C_BLACK) {
-      score.blackStones++;
-      continue;
-    }
-    if(color == C_WHITE) {
-      score.whiteStones++;
-      continue;
-    }
-    if(visited[static_cast<size_t>(point)])
-      continue;
-
-    int regionSize = 0;
-    bool touchesBlack = false;
-    bool touchesWhite = false;
-    visited[static_cast<size_t>(point)] = true;
-    stack.clear();
-    stack.push_back(point);
-
-    while(!stack.empty()) {
-      int current = stack.back();
-      stack.pop_back();
-      regionSize++;
-      forEachN4Point(boardSize,current,[&](int adjacent) {
-        Color adjacentColor = position.getColor(adjacent);
-        if(adjacentColor == C_BLACK)
-          touchesBlack = true;
-        else if(adjacentColor == C_WHITE)
-          touchesWhite = true;
-        else if(!visited[static_cast<size_t>(adjacent)]) {
-          visited[static_cast<size_t>(adjacent)] = true;
-          stack.push_back(adjacent);
-        }
-      });
-    }
-
-    if(touchesBlack && !touchesWhite)
-      score.blackTerritory += regionSize;
-    else if(touchesWhite && !touchesBlack)
-      score.whiteTerritory += regionSize;
-  }
-
-  score.blackScoreNumerator = 2 * (score.blackStones + score.blackTerritory);
-  score.whiteScoreNumerator = 2 * (score.whiteStones + score.whiteTerritory) + 15;
-  if(score.blackScoreNumerator > score.whiteScoreNumerator) {
-    score.winner = P_BLACK;
-    score.marginNumerator = score.blackScoreNumerator - score.whiteScoreNumerator;
-  }
-  else {
-    score.winner = P_WHITE;
-    score.marginNumerator = score.whiteScoreNumerator - score.blackScoreNumerator;
-  }
-  return score;
-}
-
 CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player actor, const GameAction& action) {
   LegalityContext context = buildLegalityContext(state);
   PreparedAction prepared = prepareAction(state,context,actor,action);
@@ -656,12 +662,18 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
     if(candidate.phase == CollapseGoPhase::ORDINARY_PLAY && candidate.consecutivePasses == 2) {
       if(!result.atomicStateSnapshot.has_value())
         result.atomicStateSnapshot = candidate;
-      candidate.score = scoreChineseArea(candidate.position);
+      candidate.score = CollapseGoScore::scoreChineseArea(candidate.position);
+      candidate.terminalState.emplace(
+        CollapseGoTerminalReason::SCORE,
+        candidate.score.winner,
+        getOpp(candidate.score.winner)
+      );
       candidate.phase = CollapseGoPhase::TERMINAL;
       candidate.actor = C_EMPTY;
       candidate.stableTerminalEventCount++;
       candidate.logPosition++;
       appendCurrentOccupancy(candidate);
+      result.terminalEvent = CollapseGoTerminalEvent::fromCommittedState(candidate);
       result.terminalScoreEventEmitted = true;
       result.positionalSuperkoAppends++;
     }
@@ -743,6 +755,48 @@ CollapseGoApplyResult CollapseGoReducer::apply(CollapseGoState& state, Player ac
   completeSettlementIfTriggered(candidate,result);
 
   candidate.checkConsistency();
+  state = candidate;
+  return result;
+}
+
+CollapseGoApplyResult CollapseGoReducer::terminate(
+  CollapseGoState& state,
+  Player loser,
+  CollapseGoAdministrativeTerminationReason reason
+) {
+  if(isActionBeforeAutomaticTransition(state))
+    return reject(CollapseGoApplyError::INTERNAL_INVARIANT);
+  if(state.phase == CollapseGoPhase::TERMINAL)
+    return reject(CollapseGoApplyError::TERMINAL_STATE);
+  if(state.phase != CollapseGoPhase::COLLAPSE_PLAY &&
+     state.phase != CollapseGoPhase::ORDINARY_PLAY)
+    return reject(CollapseGoApplyError::INVALID_PHASE);
+  if(loser != P_BLACK && loser != P_WHITE)
+    return reject(CollapseGoApplyError::INVALID_LOSER);
+
+  CollapseGoTerminalReason terminalReason;
+  if(reason == CollapseGoAdministrativeTerminationReason::RESIGNATION)
+    terminalReason = CollapseGoTerminalReason::RESIGNATION;
+  else if(reason == CollapseGoAdministrativeTerminationReason::TIMEOUT)
+    terminalReason = CollapseGoTerminalReason::TIMEOUT;
+  else
+    return reject(CollapseGoApplyError::INTERNAL_INVARIANT);
+
+  CollapseGoState candidate(state);
+  candidate.terminalState.emplace(terminalReason,getOpp(loser),loser);
+  candidate.phase = CollapseGoPhase::TERMINAL;
+  candidate.actor = C_EMPTY;
+  candidate.revision++;
+  candidate.stableTerminalEventCount++;
+  candidate.logPosition++;
+  appendCurrentOccupancy(candidate);
+  candidate.checkConsistency();
+
+  CollapseGoApplyResult result;
+  result.accepted = true;
+  result.error = CollapseGoApplyError::NONE;
+  result.terminalEvent = CollapseGoTerminalEvent::fromCommittedState(candidate);
+  result.positionalSuperkoAppends = 1;
   state = candidate;
   return result;
 }

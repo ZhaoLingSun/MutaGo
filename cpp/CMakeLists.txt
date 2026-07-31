@@ -666,7 +666,7 @@ endif()
 
 target_include_directories(katago PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
-# The existing EXCLUDE_FROM_ALL probe serves v0-v4 test-only UNFROZEN carriers.
+# The existing EXCLUDE_FROM_ALL probe serves v0-v5 test-only UNFROZEN carriers.
 # It is standalone and excluded from the default build; it is not a production protocol target.
 add_executable(mutago-collapse-slice-probe EXCLUDE_FROM_ALL
   core/global.cpp

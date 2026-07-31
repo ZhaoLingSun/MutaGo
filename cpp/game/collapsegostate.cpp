@@ -16,10 +16,25 @@ static_assert(is_nothrow_swappable<CollapseGoPosition>::value,"Collapse Go posit
 static_assert(is_nothrow_swappable<CollapseGoQuotas>::value,"Collapse Go quota swap must not throw");
 static_assert(is_nothrow_swappable<CollapseGoLedger>::value,"Collapse Go ledger swap must not throw");
 static_assert(is_nothrow_swappable<optional<CollapseGoPendingDouble>>::value,"Collapse Go pending swap must not throw");
+static_assert(is_nothrow_swappable<optional<CollapseGoTerminalState>>::value,"Collapse Go terminal swap must not throw");
 static_assert(is_nothrow_swappable<PositionalSuperkoHistory>::value,"Collapse Go PSK history swap must not throw");
 static_assert(is_nothrow_swappable<CollapseGoScore>::value,"Collapse Go score swap must not throw");
 
 static constexpr int64_t COLLAPSE_GO_SAFE_INTEGER_MAX = 9007199254740991LL;
+
+template<typename Func>
+void forEachN4Point(int boardSize, int point, const Func& func) {
+  const int x = point % boardSize;
+  const int y = point / boardSize;
+  if(y > 0)
+    func(point - boardSize);
+  if(x > 0)
+    func(point - 1);
+  if(x + 1 < boardSize)
+    func(point + 1);
+  if(y + 1 < boardSize)
+    func(point + boardSize);
+}
 
 void validateQuotaValue(int64_t quota) {
   if(quota < 0 || quota > COLLAPSE_GO_SAFE_INTEGER_MAX)
@@ -76,6 +91,148 @@ void checkQuotaConservation(
     if(usedValue > initialValue || expiredValue > initialValue - usedValue ||
        remainingValue != initialValue - usedValue - expiredValue)
       throw StringError("Collapse Go quota conservation is inconsistent");
+  }
+}
+
+bool hasLiveStoneSourceAtAction(
+  const CollapseGoPosition& position,
+  int64_t actionNumber
+) {
+  for(int point = 0; point < position.getPointCount(); point++) {
+    const CollapseGoCell& cell = position.getCell(point);
+    if(cell.isOccupied() && cell.getSource().originActionNumber == actionNumber)
+      return true;
+  }
+  return false;
+}
+
+bool hasPointSourceAtAction(
+  const CollapseGoPosition& position,
+  const CollapseGoLedger& ledger,
+  int64_t actionNumber
+) {
+  if(hasLiveStoneSourceAtAction(position,actionNumber))
+    return true;
+  for(size_t index = 0; index < ledger.size(); index++) {
+    if(ledger.at(index).originActionNumber == actionNumber)
+      return true;
+  }
+  return false;
+}
+
+int64_t findSettlementTriggerAction(
+  const CollapseGoPosition& position,
+  const CollapseGoLedger& ledger,
+  const PositionalSuperkoHistory& history,
+  int64_t atomicActionCount,
+  int64_t threshold
+) {
+  const int64_t earlyLimit = min(atomicActionCount,threshold - 1);
+  for(int64_t actionNumber = 2; actionNumber <= earlyLimit; actionNumber++) {
+    const size_t current = static_cast<size_t>(actionNumber);
+    if(!hasPointSourceAtAction(position,ledger,actionNumber - 1) &&
+       !hasPointSourceAtAction(position,ledger,actionNumber) &&
+       history.at(current - 2) == history.at(current - 1) &&
+       history.at(current - 1) == history.at(current))
+      return actionNumber;
+  }
+  return atomicActionCount >= threshold ? threshold : 0;
+}
+
+int64_t findPostSettlementPassCount(
+  const CollapseGoPosition& position,
+  const PositionalSuperkoHistory& history,
+  int64_t atomicActionCount,
+  int64_t settledLedgerCount,
+  int64_t settlementTriggerAction
+) {
+  int64_t passCount = 0;
+  for(int64_t actionNumber = settlementTriggerAction + 1;
+      actionNumber <= atomicActionCount; actionNumber++) {
+    const size_t current = static_cast<size_t>(actionNumber + settledLedgerCount);
+    if(history.at(current - 1) == history.at(current)) {
+      passCount += 1;
+      if(passCount > 2)
+        throw StringError(
+          "Collapse Go post-settlement action history contains more than two passes"
+        );
+    }
+    else {
+      if(passCount == 2)
+        throw StringError(
+          "Collapse Go post-settlement action follows an earlier scoring boundary"
+        );
+      passCount = 0;
+    }
+  }
+
+  if(passCount == 0 && atomicActionCount > settlementTriggerAction) {
+    if(!hasLiveStoneSourceAtAction(position,atomicActionCount))
+      throw StringError(
+        "Collapse Go post-settlement non-pass action has no live stone source"
+      );
+  }
+  else if(passCount == 1 && atomicActionCount > settlementTriggerAction + 1) {
+    if(!hasLiveStoneSourceAtAction(position,atomicActionCount - 1))
+      throw StringError(
+        "Collapse Go post-settlement pass suffix does not follow a live stone source"
+      );
+  }
+  else if(passCount == 2 && atomicActionCount > settlementTriggerAction + 2) {
+    if(!hasLiveStoneSourceAtAction(position,atomicActionCount - 2))
+      throw StringError(
+        "Collapse Go two-pass suffix does not follow a live stone source"
+      );
+  }
+  return passCount;
+}
+
+void checkLiveStoneSourceProvenance(
+  const CollapseGoPosition& position,
+  const PositionalSuperkoHistory& history,
+  int64_t settlementTriggerAction,
+  int64_t settledLedgerCount
+) {
+  for(int point = 0; point < position.getPointCount(); point++) {
+    const CollapseGoCell& cell = position.getCell(point);
+    if(!cell.isOccupied())
+      continue;
+    const CollapseGoStoneSource& source = cell.getSource();
+    int64_t historyIndex = source.originActionNumber;
+    if(settlementTriggerAction != 0 && source.originActionNumber > settlementTriggerAction)
+      historyIndex += settledLedgerCount;
+    if(historyIndex <= 0 || historyIndex >= static_cast<int64_t>(history.size()))
+      throw StringError("Collapse Go live stone source action is outside PSK history");
+    const vector<uint8_t>& before = history.at(
+      static_cast<size_t>(historyIndex - 1)
+    ).getOccupancy();
+    const vector<uint8_t>& after = history.at(
+      static_cast<size_t>(historyIndex)
+    ).getOccupancy();
+    if(before.at(static_cast<size_t>(point)) != static_cast<uint8_t>(C_EMPTY))
+      throw StringError(
+        "Collapse Go live stone source point was occupied before its origin action"
+      );
+    if(after.at(static_cast<size_t>(point)) != static_cast<uint8_t>(cell.getColor()))
+      throw StringError(
+        "Collapse Go live stone source does not match its origin-action PSK entry"
+      );
+    for(int64_t earlierIndex = 0; earlierIndex < historyIndex; earlierIndex++) {
+      if(history.at(static_cast<size_t>(earlierIndex)) == history.at(
+        static_cast<size_t>(historyIndex)
+      ))
+        throw StringError(
+          "Collapse Go live stone source origin occupancy violates positional superko"
+        );
+    }
+    for(size_t laterIndex = static_cast<size_t>(historyIndex);
+        laterIndex < history.size(); laterIndex++) {
+      const vector<uint8_t>& later = history.at(laterIndex).getOccupancy();
+      if(later.at(static_cast<size_t>(point)) != static_cast<uint8_t>(cell.getColor()))
+        throw StringError(
+          "Collapse Go live stone source did not survive continuously from its origin action"
+        );
+    }
   }
 }
 
@@ -151,6 +308,31 @@ bool CollapseGoConfig::operator==(const CollapseGoConfig& other) const {
 }
 
 bool CollapseGoConfig::operator!=(const CollapseGoConfig& other) const {
+  return !(*this == other);
+}
+
+CollapseGoTerminalState::CollapseGoTerminalState(
+  CollapseGoTerminalReason terminalReason,
+  Player terminalWinner,
+  Player terminalLoser
+)
+  : reason(terminalReason), winner(terminalWinner), loser(terminalLoser)
+{
+  if(reason != CollapseGoTerminalReason::SCORE &&
+     reason != CollapseGoTerminalReason::RESIGNATION &&
+     reason != CollapseGoTerminalReason::TIMEOUT)
+    throw StringError("Collapse Go terminal reason is invalid");
+  if(winner != P_BLACK && winner != P_WHITE)
+    throw StringError("Collapse Go terminal winner must be Black or White");
+  if(loser != getOpp(winner))
+    throw StringError("Collapse Go terminal loser must be the winner's opponent");
+}
+
+bool CollapseGoTerminalState::operator==(const CollapseGoTerminalState& other) const {
+  return reason == other.reason && winner == other.winner && loser == other.loser;
+}
+
+bool CollapseGoTerminalState::operator!=(const CollapseGoTerminalState& other) const {
   return !(*this == other);
 }
 
@@ -263,6 +445,72 @@ CollapseGoScore::CollapseGoScore()
     marginNumerator(0)
 {}
 
+CollapseGoScore CollapseGoScore::scoreChineseArea(const CollapseGoPosition& position) {
+  CollapseGoScore score;
+  score.isScored = true;
+
+  const int pointCount = position.getPointCount();
+  const int boardSize = position.getBoardSize();
+  vector<bool> visited(static_cast<size_t>(pointCount),false);
+  vector<int> stack;
+  stack.reserve(static_cast<size_t>(pointCount));
+
+  for(int point = 0; point < pointCount; point++) {
+    Color color = position.getColor(point);
+    if(color == C_BLACK) {
+      score.blackStones++;
+      continue;
+    }
+    if(color == C_WHITE) {
+      score.whiteStones++;
+      continue;
+    }
+    if(visited[static_cast<size_t>(point)])
+      continue;
+
+    int regionSize = 0;
+    bool touchesBlack = false;
+    bool touchesWhite = false;
+    visited[static_cast<size_t>(point)] = true;
+    stack.clear();
+    stack.push_back(point);
+
+    while(!stack.empty()) {
+      int current = stack.back();
+      stack.pop_back();
+      regionSize++;
+      forEachN4Point(boardSize,current,[&](int adjacent) {
+        Color adjacentColor = position.getColor(adjacent);
+        if(adjacentColor == C_BLACK)
+          touchesBlack = true;
+        else if(adjacentColor == C_WHITE)
+          touchesWhite = true;
+        else if(!visited[static_cast<size_t>(adjacent)]) {
+          visited[static_cast<size_t>(adjacent)] = true;
+          stack.push_back(adjacent);
+        }
+      });
+    }
+
+    if(touchesBlack && !touchesWhite)
+      score.blackTerritory += regionSize;
+    else if(touchesWhite && !touchesBlack)
+      score.whiteTerritory += regionSize;
+  }
+
+  score.blackScoreNumerator = 2 * (score.blackStones + score.blackTerritory);
+  score.whiteScoreNumerator = 2 * (score.whiteStones + score.whiteTerritory) + 15;
+  if(score.blackScoreNumerator > score.whiteScoreNumerator) {
+    score.winner = P_BLACK;
+    score.marginNumerator = score.blackScoreNumerator - score.whiteScoreNumerator;
+  }
+  else {
+    score.winner = P_WHITE;
+    score.marginNumerator = score.whiteScoreNumerator - score.blackScoreNumerator;
+  }
+  return score;
+}
+
 double CollapseGoScore::getBlackScore() const {
   return 0.5 * blackScoreNumerator;
 }
@@ -309,6 +557,7 @@ CollapseGoState::CollapseGoState(const CollapseGoConfig& stateConfig)
     logPosition(0),
     settledLedgerCount(0),
     stableTerminalEventCount(0),
+    terminalState(),
     positionalSuperkoHistory(position.getBoardSize(),position.getRowMajorOccupancy()),
     score()
 {
@@ -338,6 +587,7 @@ void CollapseGoState::swap(CollapseGoState& other) noexcept {
   swap(logPosition,other.logPosition);
   swap(settledLedgerCount,other.settledLedgerCount);
   swap(stableTerminalEventCount,other.stableTerminalEventCount);
+  swap(terminalState,other.terminalState);
   swap(positionalSuperkoHistory,other.positionalSuperkoHistory);
   swap(score,other.score);
 }
@@ -439,6 +689,10 @@ int64_t CollapseGoState::getStableTerminalEventCount() const {
   return stableTerminalEventCount;
 }
 
+const optional<CollapseGoTerminalState>& CollapseGoState::getTerminalState() const {
+  return terminalState;
+}
+
 const PositionalSuperkoHistory& CollapseGoState::getPositionalSuperkoHistory() const {
   return positionalSuperkoHistory;
 }
@@ -454,8 +708,6 @@ void CollapseGoState::checkConsistency() const {
   if(atomicActionCount < 0 || revision < 0 || logPosition < 0 ||
      settledLedgerCount < 0 || stableTerminalEventCount < 0)
     throw StringError("Collapse Go state counters must be nonnegative");
-  if(revision != atomicActionCount)
-    throw StringError("Collapse Go revision must equal the accepted atomic action count");
   if(stableTerminalEventCount != 0 && stableTerminalEventCount != 1)
     throw StringError("Collapse Go terminal event count must be zero or one");
   if(settledLedgerCount > static_cast<int64_t>(ledger.size()))
@@ -480,10 +732,50 @@ void CollapseGoState::checkConsistency() const {
   vector<uint8_t> emptyOccupancy(static_cast<size_t>(position.getPointCount()),static_cast<uint8_t>(C_EMPTY));
   if(positionalSuperkoHistory.at(0) != PositionalSuperkoKey(position.getBoardSize(),emptyOccupancy))
     throw StringError("Collapse Go PSK history entry zero must be the empty occupancy");
+  const int64_t settlementTriggerAction = findSettlementTriggerAction(
+    position,ledger,positionalSuperkoHistory,atomicActionCount,config.getThreshold()
+  );
+  const int64_t committedPostSettlementPasses = settlementTriggerAction == 0 ? -1 :
+    findPostSettlementPassCount(
+      position,positionalSuperkoHistory,atomicActionCount,settledLedgerCount,
+      settlementTriggerAction
+    );
 
-  if(phase == CollapseGoPhase::COLLAPSE_PLAY) {
+  const bool isTerminal = phase == CollapseGoPhase::TERMINAL;
+  if(isTerminal != terminalState.has_value())
+    throw StringError("Collapse Go terminal phase and typed terminal state must agree");
+
+  bool isAdministrativeTerminal = false;
+  if(terminalState.has_value()) {
+    const CollapseGoTerminalState& terminal = *terminalState;
+    if(terminal.reason != CollapseGoTerminalReason::SCORE &&
+       terminal.reason != CollapseGoTerminalReason::RESIGNATION &&
+       terminal.reason != CollapseGoTerminalReason::TIMEOUT)
+      throw StringError("Collapse Go terminal state has an invalid reason");
+    if(terminal.winner != P_BLACK && terminal.winner != P_WHITE)
+      throw StringError("Collapse Go terminal state winner is invalid");
+    if(terminal.loser != getOpp(terminal.winner))
+      throw StringError("Collapse Go terminal state loser is inconsistent");
+    isAdministrativeTerminal = terminal.reason != CollapseGoTerminalReason::SCORE;
+  }
+  const int64_t expectedRevision = atomicActionCount + (isAdministrativeTerminal ? 1 : 0);
+  if(revision != expectedRevision)
+    throw StringError("Collapse Go revision must equal accepted actions plus administrative terminals");
+
+  const bool usesPreSettlementRules = phase == CollapseGoPhase::COLLAPSE_PLAY ||
+    (isAdministrativeTerminal && !settlementCompleted);
+  const bool usesPostSettlementRules = phase == CollapseGoPhase::ORDINARY_PLAY ||
+    (isTerminal && !usesPreSettlementRules);
+  if(!usesPreSettlementRules && !usesPostSettlementRules)
+    throw StringError("Collapse Go phase is invalid");
+
+  if(usesPreSettlementRules) {
     if(settlementCompleted)
-      throw StringError("Collapse Go pre-settlement phase cannot be marked settled");
+      throw StringError("Collapse Go pre-settlement state cannot be marked settled");
+    if(isAdministrativeTerminal && settlementTriggerAction != 0)
+      throw StringError(
+        "Collapse Go pre-settlement administrative terminal contains a committed settlement trigger"
+      );
     if(atomicActionCount >= config.getThreshold())
       throw StringError("Collapse Go exposed pre-settlement state reached its threshold");
     if(consecutivePasses < 0 || consecutivePasses > 1)
@@ -496,23 +788,65 @@ void CollapseGoState::checkConsistency() const {
   else {
     if(!settlementCompleted)
       throw StringError("Collapse Go post-settlement state must be marked settled");
+    if(settlementTriggerAction == 0)
+      throw StringError("Collapse Go post-settlement state has no committed settlement trigger");
     if(blackRemainingQuotas != CollapseGoQuotas() || whiteRemainingQuotas != CollapseGoQuotas())
       throw StringError("Collapse Go remaining quotas must be zero after settlement");
-    if(consecutivePasses < 0 || consecutivePasses > 2)
-      throw StringError("Collapse Go post-settlement pass streak is invalid");
+    if(phase == CollapseGoPhase::ORDINARY_PLAY) {
+      if(consecutivePasses != committedPostSettlementPasses)
+        throw StringError(
+          "Collapse Go ordinary pass streak does not match the committed action suffix"
+        );
+      if(committedPostSettlementPasses > 1)
+        throw StringError("Collapse Go two ordinary passes must already end the game");
+    }
     if(settledLedgerCount != static_cast<int64_t>(ledger.size()))
       throw StringError("Collapse Go exposed post-settlement state must settle the full ledger");
     if(pendingDouble.has_value())
       throw StringError("Collapse Go pending Double cannot survive settlement");
   }
 
-  if(phase == CollapseGoPhase::TERMINAL) {
-    if(!score.isScored || actor != C_EMPTY || stableTerminalEventCount != 1 || consecutivePasses != 2)
-      throw StringError("Collapse Go scored terminal state is incomplete");
+  if(isTerminal || settlementCompleted) {
+    checkLiveStoneSourceProvenance(
+      position,positionalSuperkoHistory,settlementTriggerAction,settledLedgerCount
+    );
+  }
+
+  if(isTerminal) {
+    const CollapseGoTerminalState& terminal = *terminalState;
+    if(actor != C_EMPTY || stableTerminalEventCount != 1)
+      throw StringError("Collapse Go terminal state is incomplete");
+    if(positionalSuperkoHistory.size() < 2 ||
+       positionalSuperkoHistory.at(positionalSuperkoHistory.size() - 1) !=
+       positionalSuperkoHistory.at(positionalSuperkoHistory.size() - 2))
+      throw StringError("Collapse Go terminal event must preserve the preceding stable occupancy");
+    if(terminal.reason == CollapseGoTerminalReason::SCORE) {
+      const size_t historySize = positionalSuperkoHistory.size();
+      if(!settlementCompleted || settlementTriggerAction == 0 ||
+         atomicActionCount < settlementTriggerAction + 2 || consecutivePasses != 2 ||
+         committedPostSettlementPasses != 2 ||
+         historySize < 4 ||
+         positionalSuperkoHistory.at(historySize - 1) != positionalSuperkoHistory.at(historySize - 2) ||
+         positionalSuperkoHistory.at(historySize - 2) != positionalSuperkoHistory.at(historySize - 3) ||
+         positionalSuperkoHistory.at(historySize - 3) != positionalSuperkoHistory.at(historySize - 4) ||
+         score != CollapseGoScore::scoreChineseArea(position) ||
+         terminal.winner != score.winner)
+        throw StringError("Collapse Go scored terminal state is inconsistent");
+    }
+    else {
+      if(score != CollapseGoScore())
+        throw StringError("Collapse Go administrative terminal state cannot contain a score");
+      if(settlementCompleted &&
+         (consecutivePasses != committedPostSettlementPasses ||
+          committedPostSettlementPasses > 1))
+        throw StringError(
+          "Collapse Go administrative terminal pass streak contradicts the committed action suffix"
+        );
+    }
   }
   else {
-    if(score.isScored || stableTerminalEventCount != 0)
-      throw StringError("Collapse Go nonterminal state cannot have a terminal score event");
+    if(score != CollapseGoScore() || stableTerminalEventCount != 0)
+      throw StringError("Collapse Go nonterminal state cannot have a terminal result");
     if(actor != P_BLACK && actor != P_WHITE)
       throw StringError("Collapse Go nonterminal actor must be Black or White");
   }
@@ -644,14 +978,14 @@ void CollapseGoState::checkConsistency() const {
      whiteUsedQuotas.eightway != whiteEightwayEvents)
     throw StringError("Collapse Go used Eightway quotas do not match the append-only ledger");
 
-  const bool newestLedgerEntryRequiresContinuation = phase == CollapseGoPhase::COLLAPSE_PLAY &&
+  const bool newestLedgerEntryRequiresContinuation = usesPreSettlementRules &&
     !ledger.empty() && ledger.at(ledger.size() - 1).originKind == GameActionKind::DOUBLE_START &&
     ledger.at(ledger.size() - 1).originActionNumber == atomicActionCount;
   if(pendingDouble.has_value() != newestLedgerEntryRequiresContinuation)
     throw StringError("Collapse Go newest Double ledger origin and pending continuation must agree");
   if(pendingDouble.has_value()) {
     const CollapseGoPendingDouble& pending = *pendingDouble;
-    if(settlementCompleted || actor != pending.owner || consecutivePasses != 0 ||
+    if(settlementCompleted || (!isTerminal && actor != pending.owner) || consecutivePasses != 0 ||
        pending.originActionNumber != atomicActionCount)
       throw StringError("Collapse Go pending Double control state is inconsistent");
     const CollapseGoLedgerEntry& entry = ledger.at(ledger.size() - 1);
@@ -694,6 +1028,10 @@ void CollapseGoState::checkConsistency() const {
     if(source.originKind == GameActionKind::NORMAL) {
       if(source.specialLink.has_value())
         throw StringError("Collapse Go NORMAL stone source retains a special link");
+      if(ledgerLinks.find(source.originActionNumber) != ledgerLinks.end())
+        throw StringError(
+          "Collapse Go NORMAL stone source collides with a special ledger origin"
+        );
       continue;
     }
     if((source.originKind != GameActionKind::IMMORTAL &&
@@ -743,5 +1081,6 @@ bool CollapseGoState::isEqualForTesting(const CollapseGoState& other) const {
     revision == other.revision && logPosition == other.logPosition &&
     settledLedgerCount == other.settledLedgerCount &&
     stableTerminalEventCount == other.stableTerminalEventCount &&
+    terminalState == other.terminalState &&
     positionalSuperkoHistory == other.positionalSuperkoHistory && score == other.score;
 }

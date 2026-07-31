@@ -63,6 +63,28 @@ enum class CollapseGoSettlementReason {
   PRE_THRESHOLD_TWO_PASSES,
 };
 
+enum class CollapseGoTerminalReason {
+  SCORE,
+  RESIGNATION,
+  TIMEOUT,
+};
+
+enum class CollapseGoAdministrativeTerminationReason {
+  RESIGNATION,
+  TIMEOUT,
+};
+
+struct CollapseGoTerminalState {
+  CollapseGoTerminalReason reason;
+  Player winner;
+  Player loser;
+
+  CollapseGoTerminalState(CollapseGoTerminalReason terminalReason, Player terminalWinner, Player terminalLoser);
+
+  bool operator==(const CollapseGoTerminalState& other) const;
+  bool operator!=(const CollapseGoTerminalState& other) const;
+};
+
 enum class CollapseGoLedgerAbilityState {
   ARMED,
   CONSUMED,
@@ -145,6 +167,7 @@ struct CollapseGoScore {
   int marginNumerator;
 
   CollapseGoScore();
+  static CollapseGoScore scoreChineseArea(const CollapseGoPosition& position);
 
   double getBlackScore() const;
   double getWhiteScore() const;
@@ -179,6 +202,7 @@ public:
   int64_t getLogPosition() const;
   int64_t getSettledLedgerCount() const;
   int64_t getStableTerminalEventCount() const;
+  const std::optional<CollapseGoTerminalState>& getTerminalState() const;
   const PositionalSuperkoHistory& getPositionalSuperkoHistory() const;
   const CollapseGoScore& getScore() const;
 
@@ -208,6 +232,7 @@ private:
   int64_t logPosition;
   int64_t settledLedgerCount;
   int64_t stableTerminalEventCount;
+  std::optional<CollapseGoTerminalState> terminalState;
   PositionalSuperkoHistory positionalSuperkoHistory;
   CollapseGoScore score;
 

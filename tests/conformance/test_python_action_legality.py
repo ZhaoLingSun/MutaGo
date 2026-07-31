@@ -189,6 +189,7 @@ def golden_state(
         ("board", board),
         ("actor", actor),
         ("phase", phase),
+        ("settlement_completed", phase is Phase.ORDINARY_PLAY),
         ("atomic_action_count", len(stones)),
         ("ledger", tuple(ledger)),
         ("settled_ledger_count", int(phase is Phase.ORDINARY_PLAY) * len(ledger)),
@@ -1124,6 +1125,7 @@ class ActionLegalityRuleCoverageTests(unittest.TestCase):
                 (immortal_source, ActionKind.IMMORTAL, False),
             ),
         )
+        self.assertTrue(immortal_state.settlement_completed)
         immortal_event = immortal_state.ledger[0]
         self.assertIs(AbilityState.INACTIVE, immortal_event.ability_state)
         self.assertIs(SettlementState.SETTLED, immortal_event.settlement_state)
@@ -1144,6 +1146,7 @@ class ActionLegalityRuleCoverageTests(unittest.TestCase):
                 (eightway_source, ActionKind.EIGHTWAY, False),
             ),
         )
+        self.assertTrue(eightway_state.settlement_completed)
         eightway_event = eightway_state.ledger[0]
         self.assertIs(AbilityState.INACTIVE, eightway_event.ability_state)
         self.assertIs(SettlementState.SETTLED, eightway_event.settlement_state)

@@ -51,6 +51,7 @@ class RejectionCode(str, Enum):
     POINT_OFF_BOARD = "POINT_OFF_BOARD"
     TERMINAL_STATE = "TERMINAL_STATE"
     INVALID_PHASE = "INVALID_PHASE"
+    INVALID_LOSER = "INVALID_LOSER"
     WRONG_ACTOR = "WRONG_ACTOR"
     DOUBLE_CONTINUATION_KIND_FORBIDDEN = "DOUBLE_CONTINUATION_KIND_FORBIDDEN"
     DOUBLE_CONTINUATION_REQUIRED = "DOUBLE_CONTINUATION_REQUIRED"
@@ -69,6 +70,13 @@ class SettlementReason(str, Enum):
 
 class TerminalReason(str, Enum):
     SCORE = "SCORE"
+    RESIGNATION = "RESIGNATION"
+    TIMEOUT = "TIMEOUT"
+
+
+class AdministrativeTerminationReason(str, Enum):
+    RESIGNATION = "RESIGNATION"
+    TIMEOUT = "TIMEOUT"
 
 
 class AbilityState(str, Enum):
@@ -667,7 +675,7 @@ class TerminalResult:
     reason: TerminalReason
     winner: Color
     loser: Color
-    score: ScoreResult
+    score: ScoreResult | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.reason, TerminalReason):
@@ -676,10 +684,13 @@ class TerminalResult:
             raise TypeError("terminal players must be Color")
         if self.loser is not self.winner.opponent():
             raise ValueError("terminal loser must be the winner's opponent")
-        if not isinstance(self.score, ScoreResult):
-            raise TypeError("terminal score must be ScoreResult")
-        if self.score.winner is not self.winner:
-            raise ValueError("terminal winner must match the score winner")
+        if self.reason is TerminalReason.SCORE:
+            if not isinstance(self.score, ScoreResult):
+                raise TypeError("score terminal result requires ScoreResult")
+            if self.score.winner is not self.winner:
+                raise ValueError("terminal winner must match the score winner")
+        elif self.score is not None:
+            raise ValueError("administrative terminal results cannot contain a score")
 
 
 @dataclass(frozen=True, slots=True)
@@ -932,6 +943,8 @@ class TerminalEvent:
     def __post_init__(self) -> None:
         if not isinstance(self.reason, TerminalReason):
             raise TypeError("terminal event reason must be TerminalReason")
+        if self.reason is not TerminalReason.SCORE:
+            raise ValueError("action terminal events must use SCORE")
         if not isinstance(self.winner, Color) or not isinstance(self.loser, Color):
             raise TypeError("terminal event players must be Color")
         if self.loser is not self.winner.opponent():
@@ -966,6 +979,57 @@ class TerminalEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class ImmediateTerminalEvent:
+    reason: AdministrativeTerminationReason
+    winner: Color
+    loser: Color
+    settlement_completed: bool
+    stable_occupancy: Occupancy
+    stable_stones: tuple[Stone, ...]
+    psk_history_index: int
+    revision: int
+    log_position: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.reason, AdministrativeTerminationReason):
+            raise TypeError(
+                "immediate terminal reason must be AdministrativeTerminationReason"
+            )
+        if not isinstance(self.winner, Color) or not isinstance(self.loser, Color):
+            raise TypeError("immediate terminal players must be Color")
+        if self.loser is not self.winner.opponent():
+            raise ValueError(
+                "immediate terminal loser must be the winner's opponent"
+            )
+        if type(self.settlement_completed) is not bool:
+            raise TypeError("immediate terminal settlement_completed must be bool")
+        if not isinstance(self.stable_occupancy, Occupancy):
+            raise TypeError("immediate terminal stable_occupancy must be Occupancy")
+        if not isinstance(self.stable_stones, tuple) or any(
+            not isinstance(stone, Stone) for stone in self.stable_stones
+        ):
+            raise TypeError(
+                "immediate terminal stable_stones must contain Stone values"
+            )
+        if self.stable_occupancy != _occupancy_from_stones(self.stable_stones):
+            raise ValueError(
+                "immediate terminal stable occupancy must match stable_stones"
+            )
+        for name, value in (
+            ("psk_history_index", self.psk_history_index),
+            ("revision", self.revision),
+            ("log_position", self.log_position),
+        ):
+            _validate_positive_safe_integer(
+                f"immediate terminal event {name}", value
+            )
+        if self.psk_history_index != self.log_position:
+            raise ValueError(
+                "immediate terminal PSK history index must equal log_position"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class OracleState:
     config: OracleConfig
     board: Board
@@ -979,6 +1043,7 @@ class OracleState:
     expired_quotas: PlayerQuotas
     ledger: tuple[SpecialEvent, ...]
     pending_double: PendingDouble | None
+    settlement_completed: bool
     settled_ledger_count: int
     stable_terminal_event_count: int
     psk_history: tuple[Occupancy, ...]
@@ -1011,6 +1076,8 @@ class OracleState:
             self.pending_double, PendingDouble
         ):
             raise TypeError("pending_double must be PendingDouble or None")
+        if type(self.settlement_completed) is not bool:
+            raise TypeError("settlement_completed must be bool")
         if self.terminal is not None and not isinstance(self.terminal, TerminalResult):
             raise TypeError("terminal must be TerminalResult or None")
         if self.board.size != self.config.board_size:
@@ -1064,28 +1131,93 @@ class OracleState:
         if self.phase is Phase.COLLAPSE_PLAY:
             if self.actor is None or self.terminal is not None:
                 raise ValueError("collapse play requires an actor and no terminal result")
-            if self.atomic_action_count >= self.config.threshold:
-                raise ValueError("an exposed collapse state must be before the threshold")
-            if self.consecutive_passes > 1:
-                raise ValueError("two collapse passes must already have triggered settlement")
-            if self.expired_quotas != PlayerQuotas.zero():
-                raise ValueError("quotas cannot expire before settlement")
+            if self.settlement_completed:
+                raise ValueError("collapse play cannot have completed settlement")
+            self._validate_pre_settlement_facts()
         elif self.phase is Phase.ORDINARY_PLAY:
             if self.actor is None or self.terminal is not None:
                 raise ValueError("ordinary play requires an actor and no terminal result")
-            if self.consecutive_passes > 1:
+            if not self.settlement_completed:
+                raise ValueError("ordinary play requires completed settlement")
+            settlement_trigger_action = self._settlement_trigger_action_number()
+            if settlement_trigger_action is None:
+                raise ValueError("completed settlement has no committed settlement trigger")
+            expected_passes = self._post_settlement_pass_count(
+                settlement_trigger_action
+            )
+            if self.consecutive_passes != expected_passes:
+                raise ValueError(
+                    "ordinary pass counter must match the committed action suffix"
+                )
+            if expected_passes > 1:
                 raise ValueError("two ordinary passes must already have ended the game")
             self._validate_post_settlement_quotas()
         elif self.phase is Phase.TERMINAL:
             if self.actor is not None or self.terminal is None:
                 raise ValueError("terminal state requires no actor and a terminal result")
-            if self.consecutive_passes != 2:
-                raise ValueError("score terminal state requires exactly two consecutive passes")
-            if self.terminal.score != score_chinese_area(self.board):
-                raise ValueError("terminal score must exactly match the stable board")
-            self._validate_post_settlement_quotas()
+            if len(self.psk_history) < 2 or self.psk_history[-2] != self.psk_history[-1]:
+                raise ValueError(
+                    "terminal PSK append must preserve unchanged occupancy"
+                )
+            if self.terminal.reason is TerminalReason.SCORE:
+                if not self.settlement_completed:
+                    raise ValueError("score terminal requires completed settlement")
+                settlement_trigger_action = self._settlement_trigger_action_number()
+                if (
+                    settlement_trigger_action is None
+                    or self.atomic_action_count < settlement_trigger_action + 2
+                ):
+                    raise ValueError(
+                        "score terminal requires a settlement trigger and two ordinary passes"
+                    )
+                expected_passes = self._post_settlement_pass_count(
+                    settlement_trigger_action
+                )
+                if self.consecutive_passes != 2 or expected_passes != 2:
+                    raise ValueError(
+                        "score terminal state requires exactly two consecutive passes "
+                        "as committed ordinary passes"
+                    )
+                if len(self.psk_history) < 4 or any(
+                    occupancy != self.psk_history[-1]
+                    for occupancy in self.psk_history[-4:]
+                ):
+                    raise ValueError(
+                        "score terminal requires two PASS appends and one terminal append"
+                    )
+                if self.terminal.score != score_chinese_area(self.board):
+                    raise ValueError("terminal score must exactly match the stable board")
+                self._validate_post_settlement_quotas()
+            elif self.settlement_completed:
+                settlement_trigger_action = self._settlement_trigger_action_number()
+                if settlement_trigger_action is None:
+                    raise ValueError(
+                        "completed settlement has no committed settlement trigger"
+                    )
+                expected_passes = self._post_settlement_pass_count(
+                    settlement_trigger_action
+                )
+                if self.consecutive_passes != expected_passes:
+                    raise ValueError(
+                        "administrative terminal pass counter must match the committed action suffix"
+                    )
+                if expected_passes > 1:
+                    raise ValueError(
+                        "administrative terminal cannot follow two ordinary passes"
+                    )
+                self._validate_post_settlement_quotas()
+            else:
+                self._validate_pre_settlement_facts()
         else:
             raise ValueError(f"unsupported phase {self.phase!r}")
+
+        if self.phase is Phase.TERMINAL or self.settlement_completed:
+            source_trigger_action = (
+                self._settlement_trigger_action_number()
+                if self.settlement_completed
+                else None
+            )
+            self._validate_live_stone_sources(source_trigger_action)
 
         expected_terminal_events = 1 if self.phase is Phase.TERMINAL else 0
         if self.stable_terminal_event_count != expected_terminal_events:
@@ -1097,8 +1229,15 @@ class OracleState:
             + self.settled_ledger_count
             + self.stable_terminal_event_count
         )
-        if self.revision != self.atomic_action_count:
-            raise ValueError("revision must equal accepted candidates in this slice")
+        administrative_terminal_count = int(
+            self.terminal is not None
+            and self.terminal.reason is not TerminalReason.SCORE
+        )
+        expected_revision = self.atomic_action_count + administrative_terminal_count
+        if self.revision != expected_revision:
+            raise ValueError(
+                "revision must equal accepted actions plus administrative terminals"
+            )
         if self.log_position != emitted_stable_event_count:
             raise ValueError("log_position must equal emitted stable semantic events")
         expected_psk_length = 1 + emitted_stable_event_count
@@ -1107,6 +1246,123 @@ class OracleState:
                 "PSK history length must equal one empty seed plus atomic actions, "
                 "settled ledger events, and stable terminal events"
             )
+
+    def _action_has_live_stone_source(self, action_number: int) -> bool:
+        return any(
+            stone.origin_action_number == action_number
+            for stone in self.board.stones
+        )
+
+    def _action_has_committed_point_source(self, action_number: int) -> bool:
+        return self._action_has_live_stone_source(action_number) or any(
+            event.origin_action_number == action_number for event in self.ledger
+        )
+
+    def _settlement_trigger_action_number(self) -> int | None:
+        early_limit = min(self.atomic_action_count, self.config.threshold - 1)
+        for action_number in range(2, early_limit + 1):
+            if (
+                not self._action_has_committed_point_source(action_number - 1)
+                and not self._action_has_committed_point_source(action_number)
+                and self.psk_history[action_number - 2]
+                == self.psk_history[action_number - 1]
+                == self.psk_history[action_number]
+            ):
+                return action_number
+        if self.atomic_action_count >= self.config.threshold:
+            return self.config.threshold
+        return None
+
+    def _post_settlement_pass_count(self, trigger_action: int) -> int:
+        pass_count = 0
+        for action_number in range(
+            trigger_action + 1, self.atomic_action_count + 1
+        ):
+            history_index = action_number + self.settled_ledger_count
+            if (
+                self.psk_history[history_index - 1]
+                == self.psk_history[history_index]
+            ):
+                pass_count += 1
+                if pass_count > 2:
+                    raise ValueError(
+                        "post-settlement action history contains more than two passes"
+                    )
+            else:
+                if pass_count == 2:
+                    raise ValueError(
+                        "post-settlement action follows an earlier scoring boundary"
+                    )
+                pass_count = 0
+
+        if pass_count == 0 and self.atomic_action_count > trigger_action:
+            if not self._action_has_live_stone_source(self.atomic_action_count):
+                raise ValueError(
+                    "post-settlement non-pass action must have a live stone source"
+                )
+        elif pass_count == 1 and self.atomic_action_count > trigger_action + 1:
+            if not self._action_has_live_stone_source(
+                self.atomic_action_count - 1
+            ):
+                raise ValueError(
+                    "post-settlement pass suffix must follow a live stone source"
+                )
+        elif pass_count == 2 and self.atomic_action_count > trigger_action + 2:
+            if not self._action_has_live_stone_source(
+                self.atomic_action_count - 2
+            ):
+                raise ValueError(
+                    "two-pass suffix must follow a live stone source"
+                )
+        return pass_count
+
+    def _validate_live_stone_sources(self, trigger_action: int | None) -> None:
+        for stone in self.board.stones:
+            history_index = stone.origin_action_number
+            if trigger_action is not None and stone.origin_action_number > trigger_action:
+                history_index += self.settled_ledger_count
+            before = self.psk_history[history_index - 1]
+            after = self.psk_history[history_index]
+            if stone.point in before.black or stone.point in before.white:
+                raise ValueError(
+                    "live stone source point must be empty before its origin action"
+                )
+            expected_points = after.black if stone.color is Color.BLACK else after.white
+            if stone.point not in expected_points:
+                raise ValueError(
+                    "live stone source must match its origin action PSK entry"
+                )
+            if after in self.psk_history[:history_index]:
+                raise ValueError(
+                    "live stone source origin occupancy must be new under PSK"
+                )
+            for occupancy in self.psk_history[history_index:]:
+                occupied_by_source_color = (
+                    occupancy.black
+                    if stone.color is Color.BLACK
+                    else occupancy.white
+                )
+                if stone.point not in occupied_by_source_color:
+                    raise ValueError(
+                        "live stone source must survive continuously from its "
+                        "origin action"
+                    )
+
+    def _validate_pre_settlement_facts(self) -> None:
+        if (
+            self.phase is Phase.TERMINAL
+            and self._settlement_trigger_action_number() is not None
+        ):
+            raise ValueError(
+                "a pre-settlement administrative terminal contains a committed "
+                "settlement trigger"
+            )
+        if self.atomic_action_count >= self.config.threshold:
+            raise ValueError("an exposed pre-settlement state must be before the threshold")
+        if self.consecutive_passes > 1:
+            raise ValueError("two collapse passes must already have triggered settlement")
+        if self.expired_quotas != PlayerQuotas.zero():
+            raise ValueError("quotas cannot expire before settlement")
 
     def _validate_special_state(self) -> None:
         board_by_source: dict[str, Stone] = {}
@@ -1201,11 +1457,11 @@ class OracleState:
 
         if self.settled_ledger_count != settled_count:
             raise ValueError("settled_ledger_count must exactly match settled entries")
-        expected_settled_count = (
-            0 if self.phase is Phase.COLLAPSE_PLAY else len(self.ledger)
-        )
+        expected_settled_count = len(self.ledger) if self.settlement_completed else 0
         if settled_count != expected_settled_count:
-            raise ValueError("settled ledger count must match the exposed phase")
+            raise ValueError(
+                "settled ledger count must match settlement_completed provenance"
+            )
 
         for source_id in special_source_ids:
             stone = board_by_source[source_id]
@@ -1239,10 +1495,19 @@ class OracleState:
             ):
                 raise ValueError("a Double start requires its committed continuation")
             return
-        if self.phase is not Phase.COLLAPSE_PLAY:
-            raise ValueError("pending Double requires collapse play")
-        if self.actor is not self.pending_double.owner:
-            raise ValueError("pending Double owner must remain the current actor")
+        if self.settlement_completed:
+            raise ValueError("pending Double requires pre-settlement provenance")
+        if self.phase is Phase.COLLAPSE_PLAY:
+            if self.actor is not self.pending_double.owner:
+                raise ValueError("pending Double owner must remain the current actor")
+        elif (
+            self.phase is not Phase.TERMINAL
+            or self.terminal is None
+            or self.terminal.reason is TerminalReason.SCORE
+        ):
+            raise ValueError(
+                "pending Double requires collapse play or administrative terminal"
+            )
         linked = next(
             (
                 event
@@ -1274,10 +1539,6 @@ class OracleState:
         return self.config.threshold
 
     @property
-    def settlement_completed(self) -> bool:
-        return self.phase is not Phase.COLLAPSE_PLAY
-
-    @property
     def special_event_ledger(self) -> tuple[SpecialEvent, ...]:
         return self.ledger
 
@@ -1288,6 +1549,72 @@ class OracleState:
     @property
     def occupancy(self) -> Occupancy:
         return self.board.occupancy
+
+
+@dataclass(frozen=True, slots=True)
+class AdministrativeTerminationTransition:
+    accepted: bool
+    state: OracleState
+    rejection_code: RejectionCode | None
+    terminal_event: ImmediateTerminalEvent | None
+
+    def __post_init__(self) -> None:
+        if type(self.accepted) is not bool:
+            raise TypeError("administrative transition accepted must be bool")
+        if not isinstance(self.state, OracleState):
+            raise TypeError("administrative transition state must be OracleState")
+        if self.rejection_code is not None and not isinstance(
+            self.rejection_code, RejectionCode
+        ):
+            raise TypeError(
+                "administrative rejection_code must be RejectionCode or None"
+            )
+        if not self.accepted:
+            expected_rejection = (
+                RejectionCode.TERMINAL_STATE
+                if self.state.phase is Phase.TERMINAL
+                else RejectionCode.INVALID_LOSER
+            )
+            if (
+                self.rejection_code is not expected_rejection
+                or self.terminal_event is not None
+            ):
+                raise ValueError(
+                    "rejected administrative transition violates terminal-first precedence"
+                )
+            return
+        if self.rejection_code is not None:
+            raise ValueError(
+                "accepted administrative transition cannot contain a rejection"
+            )
+        if not isinstance(self.terminal_event, ImmediateTerminalEvent):
+            raise ValueError(
+                "accepted administrative transition requires an immediate "
+                "terminal event"
+            )
+        terminal = self.state.terminal
+        if self.state.phase is not Phase.TERMINAL or terminal is None:
+            raise ValueError(
+                "accepted administrative transition requires a terminal state"
+            )
+        expected_reason = TerminalReason(self.terminal_event.reason.value)
+        if (
+            terminal.reason is not expected_reason
+            or terminal.winner is not self.terminal_event.winner
+            or terminal.loser is not self.terminal_event.loser
+            or terminal.score is not None
+            or self.state.settlement_completed
+            is not self.terminal_event.settlement_completed
+            or self.state.board.occupancy != self.terminal_event.stable_occupancy
+            or self.state.board.stones != self.terminal_event.stable_stones
+            or self.terminal_event.psk_history_index
+            != len(self.state.psk_history) - 1
+            or self.terminal_event.revision != self.state.revision
+            or self.terminal_event.log_position != self.state.log_position
+        ):
+            raise ValueError(
+                "immediate terminal event must exactly match the committed state"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1650,6 +1977,7 @@ def new_game(config: OracleConfig | None = None) -> OracleState:
         expired_quotas=PlayerQuotas.zero(),
         ledger=(),
         pending_double=None,
+        settlement_completed=False,
         settled_ledger_count=0,
         stable_terminal_event_count=0,
         psk_history=(board.occupancy,),
@@ -1901,6 +2229,87 @@ def score_chinese_area(board: Board) -> ScoreResult:
     )
 
 
+def apply_administrative_termination(
+    state: OracleState,
+    loser: Color | str,
+    reason: AdministrativeTerminationReason,
+) -> AdministrativeTerminationTransition:
+    """Commit resignation or game timeout at an exposed stable boundary."""
+
+    if not isinstance(state, OracleState):
+        raise TypeError("state must be OracleState")
+    if not isinstance(reason, AdministrativeTerminationReason):
+        raise TypeError("reason must be AdministrativeTerminationReason")
+
+    if state.phase is Phase.TERMINAL:
+        return AdministrativeTerminationTransition(
+            accepted=False,
+            state=state,
+            rejection_code=RejectionCode.TERMINAL_STATE,
+            terminal_event=None,
+        )
+
+    if isinstance(loser, Color):
+        resolved_loser = loser
+    elif type(loser) is str:
+        try:
+            resolved_loser = Color(loser)
+        except ValueError:
+            return AdministrativeTerminationTransition(
+                accepted=False,
+                state=state,
+                rejection_code=RejectionCode.INVALID_LOSER,
+                terminal_event=None,
+            )
+    else:
+        return AdministrativeTerminationTransition(
+            accepted=False,
+            state=state,
+            rejection_code=RejectionCode.INVALID_LOSER,
+            terminal_event=None,
+        )
+
+    winner = resolved_loser.opponent()
+    terminal_reason = TerminalReason(reason.value)
+    next_revision = state.revision + 1
+    next_log_position = state.log_position + 1
+    history = state.psk_history + (state.board.occupancy,)
+    terminal = TerminalResult(
+        reason=terminal_reason,
+        winner=winner,
+        loser=resolved_loser,
+        score=None,
+    )
+    terminal_event = ImmediateTerminalEvent(
+        reason=reason,
+        winner=winner,
+        loser=resolved_loser,
+        settlement_completed=state.settlement_completed,
+        stable_occupancy=state.board.occupancy,
+        stable_stones=state.board.stones,
+        psk_history_index=len(history) - 1,
+        revision=next_revision,
+        log_position=next_log_position,
+    )
+    next_state = replace(
+        state,
+        actor=None,
+        phase=Phase.TERMINAL,
+        settlement_completed=state.settlement_completed,
+        stable_terminal_event_count=state.stable_terminal_event_count + 1,
+        psk_history=history,
+        revision=next_revision,
+        log_position=next_log_position,
+        terminal=terminal,
+    )
+    return AdministrativeTerminationTransition(
+        accepted=True,
+        state=next_state,
+        rejection_code=None,
+        terminal_event=terminal_event,
+    )
+
+
 def apply_action(
     state: OracleState,
     candidate_actor: Color | str,
@@ -2136,6 +2545,7 @@ def _commit_armed_special(
             expired_quotas=state.expired_quotas,
             ledger=ledger,
             pending_double=None,
+            settlement_completed=state.settlement_completed,
             settled_ledger_count=state.settled_ledger_count,
             stable_terminal_event_count=state.stable_terminal_event_count,
             psk_history=history,
@@ -2221,6 +2631,7 @@ def _commit_double_start(
             event_id=event_id,
             start_action_number=action_number,
         ),
+        settlement_completed=False,
         settled_ledger_count=state.settled_ledger_count,
         stable_terminal_event_count=state.stable_terminal_event_count,
         psk_history=history,
@@ -2286,6 +2697,7 @@ def _commit_normal(
             expired_quotas=state.expired_quotas,
             ledger=ledger,
             pending_double=None,
+            settlement_completed=state.settlement_completed,
             settled_ledger_count=state.settled_ledger_count,
             stable_terminal_event_count=state.stable_terminal_event_count,
             psk_history=history,
@@ -2391,6 +2803,7 @@ def _commit_pass(
             expired_quotas=state.expired_quotas,
             ledger=state.ledger,
             pending_double=None,
+            settlement_completed=True,
             settled_ledger_count=state.settled_ledger_count,
             stable_terminal_event_count=state.stable_terminal_event_count + 1,
             psk_history=terminal_history,
@@ -2422,6 +2835,7 @@ def _commit_pass(
         expired_quotas=state.expired_quotas,
         ledger=state.ledger,
         pending_double=None,
+        settlement_completed=state.settlement_completed,
         settled_ledger_count=state.settled_ledger_count,
         stable_terminal_event_count=state.stable_terminal_event_count,
         psk_history=history_after_action,
@@ -2544,6 +2958,7 @@ def _settle_after_action(
         ),
         ledger=tuple(settled_ledger),
         pending_double=None,
+        settlement_completed=True,
         settled_ledger_count=state.settled_ledger_count + settled_count,
         stable_terminal_event_count=state.stable_terminal_event_count,
         psk_history=tuple(history),
@@ -2885,6 +3300,8 @@ __all__ = [
     "PASS_ACTION_ID",
     "SCORE_DENOMINATOR",
     "SUPPORTED_BOARD_SIZES",
+    "AdministrativeTerminationReason",
+    "AdministrativeTerminationTransition",
     "ActionKind",
     "ActionV1DecodeError",
     "AbilityState",
@@ -2893,6 +3310,7 @@ __all__ = [
     "Color",
     "DecodedAction",
     "Group",
+    "ImmediateTerminalEvent",
     "Occupancy",
     "OracleConfig",
     "OracleState",
@@ -2916,6 +3334,7 @@ __all__ = [
     "Transition",
     "UnsupportedSliceAction",
     "apply_action",
+    "apply_administrative_termination",
     "decode_action_v1",
     "new_game",
     "scan_mixed_groups",

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <type_traits>
 
 #include "../game/collapsegoreducer.h"
 #include "../game/collapsegotopology.h"
@@ -27,6 +28,86 @@ public:
     state.pendingDouble = CollapseGoPendingDouble(owner,specialLink,originActionNumber);
   }
 
+  static void setPhase(CollapseGoState& state, CollapseGoPhase phase) {
+    state.phase = phase;
+  }
+
+  static void setActor(CollapseGoState& state, Player actor) {
+    state.actor = actor;
+  }
+
+  static void setRevision(CollapseGoState& state, int64_t revision) {
+    state.revision = revision;
+  }
+
+  static void setAtomicActionCount(CollapseGoState& state, int64_t actionCount) {
+    state.atomicActionCount = actionCount;
+  }
+
+  static void setConsecutivePasses(CollapseGoState& state, int64_t passCount) {
+    state.consecutivePasses = passCount;
+  }
+
+  static void setLogPosition(CollapseGoState& state, int64_t logPosition) {
+    state.logPosition = logPosition;
+  }
+
+  static void setSettlementCompleted(CollapseGoState& state, bool completed) {
+    state.settlementCompleted = completed;
+  }
+
+  static void resetPskToRepeatedCurrent(CollapseGoState& state, size_t count) {
+    if(count == 0)
+      throw StringError("Collapse Go test PSK reset requires the initial seed");
+    PositionalSuperkoHistory replacement(state.positionalSuperkoHistory.at(0));
+    PositionalSuperkoKey current(
+      state.position.getBoardSize(),state.position.getRowMajorOccupancy()
+    );
+    for(size_t index = 1; index < count; index++)
+      replacement.append(current);
+    state.positionalSuperkoHistory = replacement;
+  }
+
+  static void swapStoneSources(CollapseGoState& state, int firstPoint, int secondPoint) {
+    const CollapseGoCell firstCell = state.position.getCell(firstPoint);
+    const CollapseGoCell secondCell = state.position.getCell(secondPoint);
+    if(!firstCell.isOccupied() || !secondCell.isOccupied())
+      throw StringError("Collapse Go source swap requires two occupied points");
+    const Color firstColor = firstCell.getColor();
+    const Color secondColor = secondCell.getColor();
+    const CollapseGoStoneSource firstSource = firstCell.getSource();
+    const CollapseGoStoneSource secondSource = secondCell.getSource();
+    state.position.removeStone(firstPoint);
+    state.position.removeStone(secondPoint);
+    state.position.placeStone(firstPoint,firstColor,secondSource);
+    state.position.placeStone(secondPoint,secondColor,firstSource);
+  }
+
+  static void relabelStoneSource(
+    CollapseGoState& state,
+    int point,
+    const CollapseGoStoneSource& source
+  ) {
+    const CollapseGoCell cell = state.position.getCell(point);
+    if(!cell.isOccupied())
+      throw StringError("Collapse Go source relabel requires an occupied point");
+    const Color color = cell.getColor();
+    state.position.removeStone(point);
+    state.position.placeStone(point,color,source);
+  }
+
+  static void clearTerminalState(CollapseGoState& state) {
+    state.terminalState.reset();
+  }
+
+  static CollapseGoTerminalState& terminalState(CollapseGoState& state) {
+    return *state.terminalState;
+  }
+
+  static CollapseGoScore& score(CollapseGoState& state) {
+    return state.score;
+  }
+
   static void replacePskOccupancy(
     CollapseGoState& state,
     size_t index,
@@ -39,6 +120,26 @@ public:
     PositionalSuperkoHistory replacement(index == 0 ? replacementKey : history.at(0));
     for(size_t historyIndex = 1; historyIndex < history.size(); historyIndex++)
       replacement.append(historyIndex == index ? replacementKey : history.at(historyIndex));
+    state.positionalSuperkoHistory = replacement;
+  }
+
+  static void insertPskOccupancy(
+    CollapseGoState& state,
+    size_t index,
+    const vector<uint8_t>& occupancy
+  ) {
+    const PositionalSuperkoHistory& history = state.positionalSuperkoHistory;
+    if(index == 0 || index > history.size())
+      throw StringError("Collapse Go test PSK insertion index is out of range");
+    PositionalSuperkoKey insertedKey(state.position.getBoardSize(),occupancy);
+    PositionalSuperkoHistory replacement(history.at(0));
+    for(size_t historyIndex = 1; historyIndex < history.size(); historyIndex++) {
+      if(historyIndex == index)
+        replacement.append(insertedKey);
+      replacement.append(history.at(historyIndex));
+    }
+    if(index == history.size())
+      replacement.append(insertedKey);
     state.positionalSuperkoHistory = replacement;
   }
 
@@ -56,6 +157,17 @@ public:
     state.revision++;
     state.logPosition++;
     state.consecutivePasses = 0;
+    state.positionalSuperkoHistory.append(PositionalSuperkoKey(
+      state.position.getBoardSize(),state.position.getRowMajorOccupancy()
+    ));
+  }
+
+  static void appendSyntheticPass(CollapseGoState& state) {
+    state.atomicActionCount++;
+    state.revision++;
+    state.logPosition++;
+    state.consecutivePasses++;
+    state.actor = getOpp(state.actor);
     state.positionalSuperkoHistory.append(PositionalSuperkoKey(
       state.position.getBoardSize(),state.position.getRowMajorOccupancy()
     ));
@@ -104,6 +216,27 @@ vector<uint8_t> transformedOccupancy(
     transformed[static_cast<size_t>(transformPoint(boardSize,point,symmetry))] =
       occupancy[static_cast<size_t>(point)];
   return transformed;
+}
+
+void assertTransformedPosition(
+  const CollapseGoPosition& reference,
+  const CollapseGoPosition& transformed,
+  int boardSize,
+  int symmetry
+) {
+  testAssert(reference.getBoardSize() == boardSize);
+  testAssert(transformed.getBoardSize() == boardSize);
+  for(int point = 0; point < boardSize * boardSize; point++) {
+    const CollapseGoCell& referenceCell = reference.getCell(point);
+    const CollapseGoCell& transformedCell = transformed.getCell(
+      transformPoint(boardSize,point,symmetry)
+    );
+    testAssert(referenceCell.isOccupied() == transformedCell.isOccupied());
+    if(referenceCell.isOccupied()) {
+      testAssert(referenceCell.getColor() == transformedCell.getColor());
+      testAssert(referenceCell.getSource() == transformedCell.getSource());
+    }
+  }
 }
 
 vector<Loc> transformedLocs(const vector<Loc>& locs, int boardSize, int symmetry) {
@@ -187,6 +320,46 @@ CollapseGoApplyResult playDoubleStart(CollapseGoState& state, int x, int y) {
   );
 }
 
+CollapseGoApplyResult terminateAccepted(
+  CollapseGoState& state,
+  Player loser,
+  CollapseGoAdministrativeTerminationReason reason
+) {
+  CollapseGoApplyResult result = CollapseGoReducer::terminate(state,loser,reason);
+  if(!result.accepted)
+    throw StringError("Expected accepted Collapse Go termination, got " + result.getErrorCode());
+  return result;
+}
+
+void expectTerminationRejectedAtomically(
+  CollapseGoState& state,
+  Player loser,
+  CollapseGoAdministrativeTerminationReason reason,
+  CollapseGoApplyError expectedError
+) {
+  CollapseGoState before(state);
+  CollapseGoApplyResult result = CollapseGoReducer::terminate(state,loser,reason);
+  if(result.accepted || result.error != expectedError) {
+    CollapseGoApplyResult expected;
+    expected.error = expectedError;
+    throw StringError(
+      "Expected Collapse Go termination rejection " + expected.getErrorCode() +
+      ", got " + result.getErrorCode()
+    );
+  }
+  testAssert(result.isSemanticRejection());
+  testAssert(!result.isUnsupportedBySlice());
+  testAssert(result.capturedStones.empty());
+  testAssert(!result.atomicStateSnapshot.has_value());
+  testAssert(result.settlementSteps.empty());
+  testAssert(!result.settlementTriggered);
+  testAssert(result.settlementReason == CollapseGoSettlementReason::NONE);
+  testAssert(!result.terminalEvent.has_value());
+  testAssert(!result.terminalScoreEventEmitted);
+  testAssert(result.positionalSuperkoAppends == 0);
+  testAssert(state.isEqualForTesting(before));
+}
+
 void expectRejectedAtomically(
   CollapseGoState& state,
   Player actor,
@@ -206,6 +379,7 @@ void expectRejectedAtomically(
   }
   testAssert(result.isSemanticRejection() == expectedSemanticRejection);
   testAssert(result.isUnsupportedBySlice() == (expectedError == CollapseGoApplyError::UNSUPPORTED_BY_SLICE));
+  testAssert(!result.terminalEvent.has_value());
   testAssert(state.isEqualForTesting(before));
 }
 
@@ -372,6 +546,31 @@ ImmortalD4Episode runCapturedEightwayD4Episode(int symmetry) {
   return ImmortalD4Episode{actions,placementState,state,settlement};
 }
 
+struct AdministrativeD4Episode {
+  vector<GameAction> actions;
+  CollapseGoState pendingState;
+  CollapseGoState terminalState;
+  CollapseGoApplyResult terminationResult;
+};
+
+AdministrativeD4Episode runAdministrativeD4Episode(int symmetry) {
+  const int boardSize = 9;
+  CollapseGoState state(CollapseGoConfig::allOne(boardSize));
+  const int transformedPoint = transformPoint(boardSize,2 + 3 * boardSize,symmetry);
+  GameAction start = GameAction::fromBoard(
+    GameActionKind::DOUBLE_START,
+    boardSize,
+    transformedPoint % boardSize,
+    transformedPoint / boardSize
+  );
+  applyAccepted(state,state.getActor(),start);
+  CollapseGoState pendingState(state);
+  CollapseGoApplyResult termination = terminateAccepted(
+    state,P_WHITE,CollapseGoAdministrativeTerminationReason::TIMEOUT
+  );
+  return AdministrativeD4Episode{{start},pendingState,state,termination};
+}
+
 void assertD4Actions(
   const vector<GameAction>& reference,
   const vector<GameAction>& transformed,
@@ -408,6 +607,7 @@ void assertD4State(
   testAssert(transformed.getSettledLedgerCount() == reference.getSettledLedgerCount());
   testAssert(transformed.getStableTerminalEventCount() == reference.getStableTerminalEventCount());
   testAssert(transformed.getPendingDouble() == reference.getPendingDouble());
+  testAssert(transformed.getTerminalState() == reference.getTerminalState());
   testAssert(transformed.getScore() == reference.getScore());
 
   for(Player player: {P_BLACK,P_WHITE}) {
@@ -500,6 +700,26 @@ void assertD4Settlement(
   ));
   testAssert(transformed.settlementTriggered == reference.settlementTriggered);
   testAssert(transformed.settlementReason == reference.settlementReason);
+  testAssert(transformed.terminalEvent.has_value() == reference.terminalEvent.has_value());
+  if(reference.terminalEvent.has_value()) {
+    const CollapseGoTerminalEvent& referenceEvent = *reference.terminalEvent;
+    const CollapseGoTerminalEvent& transformedEvent = *transformed.terminalEvent;
+    testAssert(transformedEvent.reason == referenceEvent.reason);
+    testAssert(transformedEvent.winner == referenceEvent.winner);
+    testAssert(transformedEvent.loser == referenceEvent.loser);
+    testAssert(transformedEvent.score == referenceEvent.score);
+    testAssert(transformedEvent.settlementCompleted == referenceEvent.settlementCompleted);
+    assertTransformedPosition(
+      referenceEvent.stablePosition,transformedEvent.stablePosition,boardSize,symmetry
+    );
+    testAssert(transformedEvent.stableOccupancy == transformedOccupancy(
+      referenceEvent.stableOccupancy,boardSize,symmetry
+    ));
+    testAssert(transformedEvent.positionalSuperkoHistoryIndex ==
+      referenceEvent.positionalSuperkoHistoryIndex);
+    testAssert(transformedEvent.revision == referenceEvent.revision);
+    testAssert(transformedEvent.logPosition == referenceEvent.logPosition);
+  }
   testAssert(transformed.terminalScoreEventEmitted == reference.terminalScoreEventEmitted);
   testAssert(transformed.positionalSuperkoAppends == reference.positionalSuperkoAppends);
   testAssert(transformed.settlementSteps.size() == reference.settlementSteps.size());
@@ -576,9 +796,19 @@ void assertNonDecisionSnapshotFailsClosed(const CollapseGoState& snapshot) {
   testAssert(rejected.settlementSteps.empty());
   testAssert(!rejected.settlementTriggered);
   testAssert(rejected.settlementReason == CollapseGoSettlementReason::NONE);
+  testAssert(!rejected.terminalEvent.has_value());
   testAssert(!rejected.terminalScoreEventEmitted);
   testAssert(rejected.positionalSuperkoAppends == 0);
   testAssert(candidate.isEqualForTesting(before));
+  testAssert(snapshot.isEqualForTesting(before));
+
+  CollapseGoState terminationCandidate(snapshot);
+  expectTerminationRejectedAtomically(
+    terminationCandidate,
+    P_BLACK,
+    CollapseGoAdministrativeTerminationReason::RESIGNATION,
+    CollapseGoApplyError::INTERNAL_INVARIANT
+  );
   testAssert(snapshot.isEqualForTesting(before));
 }
 
@@ -610,6 +840,127 @@ CollapseGoLegalMask assertLegalMaskMatchesApply(const CollapseGoState& state) {
     testAssert(first.none());
   else
     testAssert(first.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+  return first;
+}
+
+using CollapseGoReplayStep = pair<Player,GameAction>;
+
+struct CollapseGoSuffixRecord {
+  vector<CollapseGoLegalMask> legalMasks;
+  vector<CollapseGoApplyResult> results;
+  vector<CollapseGoState> statesAfterActions;
+  CollapseGoState finalState;
+};
+
+CollapseGoLegalMask deriveStableReplayMask(const CollapseGoState& state) {
+  CollapseGoState before(state);
+  CollapseGoLegalMask first = CollapseGoReducer::deriveLegalMask(state);
+  CollapseGoLegalMask second = CollapseGoReducer::deriveLegalMask(state);
+  testAssert(first == second);
+  testAssert(state.isEqualForTesting(before));
+  return first;
+}
+
+CollapseGoSuffixRecord recordAcceptedSuffix(
+  CollapseGoState& state,
+  const vector<CollapseGoReplayStep>& suffix
+) {
+  vector<CollapseGoLegalMask> legalMasks;
+  vector<CollapseGoApplyResult> results;
+  vector<CollapseGoState> statesAfterActions;
+  legalMasks.reserve(suffix.size() + 1);
+  results.reserve(suffix.size());
+  statesAfterActions.reserve(suffix.size());
+
+  for(size_t index = 0; index < suffix.size(); index++) {
+    legalMasks.push_back(deriveStableReplayMask(state));
+    CollapseGoApplyResult result = CollapseGoReducer::apply(
+      state,suffix[index].first,suffix[index].second
+    );
+    if(!result.accepted)
+      throw StringError(
+        "Expected accepted Collapse Go replay suffix action " + to_string(index) +
+        ", got " + result.getErrorCode()
+      );
+    state.checkConsistency();
+    results.push_back(result);
+    statesAfterActions.push_back(state);
+  }
+  legalMasks.push_back(deriveStableReplayMask(state));
+  return CollapseGoSuffixRecord{legalMasks,results,statesAfterActions,state};
+}
+
+bool applyResultsEqualForTesting(
+  const CollapseGoApplyResult& expected,
+  const CollapseGoApplyResult& actual
+) {
+  if(actual.accepted != expected.accepted || actual.error != expected.error ||
+     actual.capturedStones != expected.capturedStones ||
+     actual.atomicStateSnapshot.has_value() != expected.atomicStateSnapshot.has_value())
+    return false;
+  if(expected.atomicStateSnapshot.has_value() &&
+     !actual.atomicStateSnapshot->isEqualForTesting(*expected.atomicStateSnapshot))
+    return false;
+  return actual.settlementSteps == expected.settlementSteps &&
+    actual.settlementTriggered == expected.settlementTriggered &&
+    actual.settlementReason == expected.settlementReason &&
+    actual.terminalEvent == expected.terminalEvent &&
+    actual.terminalScoreEventEmitted == expected.terminalScoreEventEmitted &&
+    actual.positionalSuperkoAppends == expected.positionalSuperkoAppends;
+}
+
+void assertExactApplyResult(
+  const CollapseGoApplyResult& expected,
+  const CollapseGoApplyResult& actual
+) {
+  testAssert(applyResultsEqualForTesting(expected,actual));
+}
+
+void assertExactSuffixRecord(
+  const CollapseGoSuffixRecord& expected,
+  const CollapseGoSuffixRecord& actual
+) {
+  testAssert(actual.legalMasks == expected.legalMasks);
+  testAssert(actual.results.size() == expected.results.size());
+  for(size_t index = 0; index < expected.results.size(); index++)
+    assertExactApplyResult(expected.results[index],actual.results[index]);
+  testAssert(actual.statesAfterActions.size() == expected.statesAfterActions.size());
+  for(size_t index = 0; index < expected.statesAfterActions.size(); index++)
+    testAssert(actual.statesAfterActions[index].isEqualForTesting(expected.statesAfterActions[index]));
+  testAssert(actual.finalState.isEqualForTesting(expected.finalState));
+}
+
+CollapseGoSuffixRecord assertDeterministicSuffixReplay(
+  CollapseGoState checkpoint,
+  const vector<CollapseGoReplayStep>& prefix,
+  const vector<CollapseGoReplayStep>& suffix
+) {
+  checkpoint.checkConsistency();
+  CollapseGoState immutableCheckpoint(checkpoint);
+  CollapseGoLegalMask checkpointMask = deriveStableReplayMask(checkpoint);
+
+  CollapseGoState working(checkpoint);
+  CollapseGoSuffixRecord first = recordAcceptedSuffix(working,suffix);
+  testAssert(checkpoint.isEqualForTesting(immutableCheckpoint));
+  testAssert(deriveStableReplayMask(checkpoint) == checkpointMask);
+
+  working = checkpoint;
+  testAssert(working.isEqualForTesting(checkpoint));
+  testAssert(deriveStableReplayMask(working) == checkpointMask);
+  CollapseGoSuffixRecord restored = recordAcceptedSuffix(working,suffix);
+  assertExactSuffixRecord(first,restored);
+
+  CollapseGoState fresh(checkpoint.getConfig());
+  for(const CollapseGoReplayStep& step: prefix)
+    applyAccepted(fresh,step.first,step.second);
+  fresh.checkConsistency();
+  testAssert(fresh.isEqualForTesting(checkpoint));
+  testAssert(deriveStableReplayMask(fresh) == checkpointMask);
+  CollapseGoSuffixRecord freshReplay = recordAcceptedSuffix(fresh,suffix);
+  assertExactSuffixRecord(first,freshReplay);
+
+  testAssert(checkpoint.isEqualForTesting(immutableCheckpoint));
+  testAssert(deriveStableReplayMask(checkpoint) == checkpointMask);
   return first;
 }
 
@@ -713,6 +1064,74 @@ void Tests::runCollapseReducerTests() {
     testAssert(state.getLogPosition() == 0);
     testAssert(state.getSettledLedgerCount() == 0);
     testAssert(state.getStableTerminalEventCount() == 0);
+    testAssert(!state.getTerminalState().has_value());
+    testAssert(state.getScore() == CollapseGoScore());
+
+    CollapseGoTerminalState scoreTerminal(
+      CollapseGoTerminalReason::SCORE,P_BLACK,P_WHITE
+    );
+    testAssert(scoreTerminal == CollapseGoTerminalState(
+      CollapseGoTerminalReason::SCORE,P_BLACK,P_WHITE
+    ));
+    testAssert(scoreTerminal != CollapseGoTerminalState(
+      CollapseGoTerminalReason::SCORE,P_WHITE,P_BLACK
+    ));
+    expectStringError([]() {
+      CollapseGoTerminalState(
+        static_cast<CollapseGoTerminalReason>(-1),P_BLACK,P_WHITE
+      );
+    });
+    expectStringError([]() {
+      CollapseGoTerminalState(CollapseGoTerminalReason::TIMEOUT,C_EMPTY,P_BLACK);
+    });
+    expectStringError([]() {
+      CollapseGoTerminalState(CollapseGoTerminalReason::RESIGNATION,P_BLACK,P_BLACK);
+    });
+
+    static_assert(!is_constructible<
+      CollapseGoTerminalEvent,
+      const CollapseGoTerminalState&,
+      const CollapseGoScore&,
+      const vector<uint8_t>&,
+      int64_t,
+      int64_t,
+      int64_t
+    >::value,"Collapse Go terminal events must not accept arbitrary payloads");
+    static_assert(!is_constructible<
+      CollapseGoTerminalEvent,
+      const CollapseGoState&
+    >::value,"Collapse Go terminal-event state construction must remain factory-only");
+
+    CollapseGoState nonterminal(CollapseGoConfig::allOne(9));
+    expectStringError([&]() {
+      (void)CollapseGoTerminalEvent::fromCommittedState(nonterminal);
+    });
+
+    for(int boardSize: {9,13,19}) {
+      CollapseGoState administrativeState(CollapseGoConfig::allOne(boardSize));
+      CollapseGoApplyResult administrativeResult = terminateAccepted(
+        administrativeState,P_BLACK,CollapseGoAdministrativeTerminationReason::RESIGNATION
+      );
+      testAssert(administrativeResult.terminalEvent.has_value());
+      const CollapseGoTerminalEvent& administrativeEvent = *administrativeResult.terminalEvent;
+      administrativeEvent.validateAgainstCommittedState(administrativeState);
+      testAssert(administrativeEvent.reason == CollapseGoTerminalReason::RESIGNATION);
+      testAssert(administrativeEvent.score == CollapseGoScore());
+      testAssert(administrativeEvent.stableOccupancy.size() ==
+        static_cast<size_t>(boardSize * boardSize));
+
+      CollapseGoState scoredState(CollapseGoConfig::allOne(boardSize));
+      enterOrdinaryPlay(scoredState);
+      playPass(scoredState);
+      CollapseGoApplyResult scoreResult = playPass(scoredState);
+      testAssert(scoreResult.terminalScoreEventEmitted);
+      testAssert(scoreResult.terminalEvent.has_value());
+      const CollapseGoTerminalEvent& scoreEvent = *scoreResult.terminalEvent;
+      scoreEvent.validateAgainstCommittedState(scoredState);
+      testAssert(scoreEvent.reason == CollapseGoTerminalReason::SCORE);
+      testAssert(scoreEvent.score == scoredState.getScore());
+      testAssert(scoreEvent.stableOccupancy.size() == static_cast<size_t>(boardSize * boardSize));
+    }
 
     Board metadataOnlyDifference(9,9);
     metadataOnlyDifference.setSimpleKoLoc(Location::getLoc(4,4,9));
@@ -1885,6 +2304,35 @@ void Tests::runCollapseReducerTests() {
     }
   }
 
+  // Administrative pending-Double termination and its terminal event are exact under D4 and inverse maps.
+  {
+    const int inverseSymmetry[8] = {0,1,2,3,4,6,5,7};
+    AdministrativeD4Episode reference = runAdministrativeD4Episode(0);
+    testAssert(reference.pendingState.getPendingDouble().has_value());
+    testAssert(reference.terminalState.getPendingDouble().has_value());
+    testAssert(reference.terminationResult.terminalEvent.has_value());
+    testAssert(reference.terminationResult.terminalEvent->reason ==
+      CollapseGoTerminalReason::TIMEOUT);
+
+    for(int symmetry = 0; symmetry < 8; symmetry++) {
+      AdministrativeD4Episode transformed = runAdministrativeD4Episode(symmetry);
+      assertD4Actions(reference.actions,transformed.actions,9,symmetry);
+      assertD4State(reference.pendingState,transformed.pendingState,symmetry);
+      assertD4State(reference.terminalState,transformed.terminalState,symmetry);
+      assertD4Settlement(
+        reference.terminationResult,transformed.terminationResult,9,symmetry
+      );
+
+      int inverse = inverseSymmetry[symmetry];
+      assertD4Actions(transformed.actions,reference.actions,9,inverse);
+      assertD4State(transformed.pendingState,reference.pendingState,inverse);
+      assertD4State(transformed.terminalState,reference.terminalState,inverse);
+      assertD4Settlement(
+        transformed.terminationResult,reference.terminationResult,9,inverse
+      );
+    }
+  }
+
   // An opponent may fill the last liberty without capturing a protected group.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
@@ -2121,9 +2569,11 @@ void Tests::runCollapseReducerTests() {
     CollapseGoStateTestAccess::appendSyntheticNormalStone(state,3,4,P_BLACK);
     CollapseGoStateTestAccess::appendSyntheticNormalStone(state,5,4,P_BLACK);
     CollapseGoStateTestAccess::appendSyntheticNormalStone(state,4,5,P_BLACK);
-    testAssert(state.getAtomicActionCount() == 22);
-    testAssert(state.getLogPosition() == 22);
-    testAssert(state.getPositionalSuperkoHistory().size() == 23);
+    CollapseGoStateTestAccess::appendSyntheticPass(state);
+    CollapseGoStateTestAccess::appendSyntheticPass(state);
+    testAssert(state.getAtomicActionCount() == 24);
+    testAssert(state.getLogPosition() == 24);
+    testAssert(state.getPositionalSuperkoHistory().size() == 25);
     expectStringError([&]() { state.checkConsistency(); });
 
     CollapseGoApplyResult settlement = CollapseGoReducerTestAccess::completeSyntheticSettlement(
@@ -2143,7 +2593,7 @@ void Tests::runCollapseReducerTests() {
       vector<Loc>({Location::getLoc(9,9,19)}));
     testAssert(step.removalBatches[0].whiteStones ==
       vector<Loc>({Location::getLoc(4,4,19)}));
-    testAssert(step.positionalSuperkoHistoryIndex == 23);
+    testAssert(step.positionalSuperkoHistoryIndex == 25);
     testAssert(step.stableOccupancy == state.getPosition().getRowMajorOccupancy());
     testAssert(state.getPosition().isEmpty(9,9));
     testAssert(state.getPosition().isEmpty(4,4));
@@ -2154,9 +2604,9 @@ void Tests::runCollapseReducerTests() {
     testAssert(capturedSource.settlementState == CollapseGoLedgerSettlementState::SETTLED);
     testAssert(capturedSource.tombstone);
     testAssert(state.getSettledLedgerCount() == 1);
-    testAssert(state.getAtomicActionCount() == 22);
-    testAssert(state.getLogPosition() == 23);
-    testAssert(state.getPositionalSuperkoHistory().size() == 24);
+    testAssert(state.getAtomicActionCount() == 24);
+    testAssert(state.getLogPosition() == 25);
+    testAssert(state.getPositionalSuperkoHistory().size() == 26);
     testAssert(state.getPositionalSuperkoHistory().back() == PositionalSuperkoKey(
       19,state.getPosition().getRowMajorOccupancy()
     ));
@@ -2494,6 +2944,407 @@ void Tests::runCollapseReducerTests() {
     expectStringError([&]() { missingEightwayHistory.checkConsistency(); });
   }
 
+  // Both administrative reasons and both losers commit one typed terminal event at collapse boundaries.
+  {
+    const pair<CollapseGoAdministrativeTerminationReason,CollapseGoTerminalReason> reasons[] = {
+      {CollapseGoAdministrativeTerminationReason::RESIGNATION,CollapseGoTerminalReason::RESIGNATION},
+      {CollapseGoAdministrativeTerminationReason::TIMEOUT,CollapseGoTerminalReason::TIMEOUT},
+    };
+    for(const auto& reason: reasons) {
+      for(Player loser: {P_BLACK,P_WHITE}) {
+        CollapseGoState state(CollapseGoConfig::allOne(9));
+        CollapseGoState before(state);
+        const bool loserIsCurrentActor = loser == before.getActor();
+        CollapseGoApplyResult result = terminateAccepted(state,loser,reason.first);
+
+        testAssert(result.accepted);
+        testAssert(result.error == CollapseGoApplyError::NONE);
+        testAssert(result.capturedStones.empty());
+        testAssert(!result.atomicStateSnapshot.has_value());
+        testAssert(result.settlementSteps.empty());
+        testAssert(!result.settlementTriggered);
+        testAssert(result.settlementReason == CollapseGoSettlementReason::NONE);
+        testAssert(result.terminalEvent.has_value());
+        testAssert(!result.terminalScoreEventEmitted);
+        testAssert(result.positionalSuperkoAppends == 1);
+
+        testAssert(state.getPhase() == CollapseGoPhase::TERMINAL);
+        testAssert(state.getActor() == C_EMPTY);
+        testAssert(state.getAtomicActionCount() == 0);
+        testAssert(state.getConsecutivePasses() == 0);
+        testAssert(!state.isSettlementCompleted());
+        testAssert(state.getRevision() == 1);
+        testAssert(state.getLogPosition() == 1);
+        testAssert(state.getSettledLedgerCount() == 0);
+        testAssert(state.getStableTerminalEventCount() == 1);
+        testAssert(state.getScore() == CollapseGoScore());
+        testAssert(state.getTerminalState().has_value());
+        const CollapseGoTerminalState& terminal = *state.getTerminalState();
+        testAssert(terminal.reason == reason.second);
+        testAssert(terminal.winner == getOpp(loser));
+        testAssert(terminal.loser == loser);
+        testAssert((terminal.loser == before.getActor()) == loserIsCurrentActor);
+
+        const CollapseGoTerminalEvent& event = *result.terminalEvent;
+        testAssert(event.reason == terminal.reason);
+        testAssert(event.winner == terminal.winner);
+        testAssert(event.loser == terminal.loser);
+        testAssert(event.score == CollapseGoScore());
+        testAssert(!event.settlementCompleted);
+        testAssert(event.stablePosition.isEqualForTesting(before.getPosition()));
+        testAssert(event.stableOccupancy == before.getPosition().getRowMajorOccupancy());
+        testAssert(event.positionalSuperkoHistoryIndex == 1);
+        testAssert(event.revision == 1);
+        testAssert(event.logPosition == 1);
+        CollapseGoTerminalEvent copiedEvent(event);
+        testAssert(copiedEvent == event);
+        testAssert(!(copiedEvent != event));
+
+        testAssert(state.getPosition().isEqualForTesting(before.getPosition()));
+        testAssert(state.getLedger() == before.getLedger());
+        testAssert(state.getPendingDouble() == before.getPendingDouble());
+        for(Player player: {P_BLACK,P_WHITE}) {
+          for(CollapseGoAbility ability: {
+            CollapseGoAbility::IMMORTAL,
+            CollapseGoAbility::DOUBLE_MOVE,
+            CollapseGoAbility::EIGHTWAY,
+          }) {
+            testAssert(state.getInitialQuota(player,ability) == before.getInitialQuota(player,ability));
+            testAssert(state.getRemainingQuota(player,ability) == before.getRemainingQuota(player,ability));
+            testAssert(state.getUsedQuota(player,ability) == before.getUsedQuota(player,ability));
+            testAssert(state.getExpiredQuota(player,ability) == before.getExpiredQuota(player,ability));
+          }
+        }
+        testAssert(state.getPositionalSuperkoHistory().size() == 2);
+        testAssert(state.getPositionalSuperkoHistory().at(0) ==
+          before.getPositionalSuperkoHistory().at(0));
+        testAssert(state.getPositionalSuperkoHistory().at(1) ==
+          before.getPositionalSuperkoHistory().at(0));
+        testAssert(CollapseGoReducer::deriveLegalMask(state).none());
+        state.checkConsistency();
+
+        expectRejectedAtomically(
+          state,P_BLACK,normalAction(9,4,4),CollapseGoApplyError::TERMINAL_STATE,true
+        );
+        expectTerminationRejectedAtomically(
+          state,loser,reason.first,CollapseGoApplyError::TERMINAL_STATE
+        );
+      }
+    }
+  }
+
+  // Otherwise-identical administrative reasons remain distinct in state, result, and event equality.
+  {
+    CollapseGoState resignationState(CollapseGoConfig::allOne(9));
+    CollapseGoState timeoutState(resignationState);
+    CollapseGoApplyResult resignationResult = terminateAccepted(
+      resignationState,P_BLACK,CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    CollapseGoApplyResult timeoutResult = terminateAccepted(
+      timeoutState,P_BLACK,CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+
+    testAssert(resignationState.getTerminalState().has_value());
+    testAssert(timeoutState.getTerminalState().has_value());
+    testAssert(*resignationState.getTerminalState() != *timeoutState.getTerminalState());
+    testAssert(!resignationState.isEqualForTesting(timeoutState));
+    testAssert(resignationResult.terminalEvent.has_value());
+    testAssert(timeoutResult.terminalEvent.has_value());
+    testAssert(*resignationResult.terminalEvent != *timeoutResult.terminalEvent);
+    testAssert(!applyResultsEqualForTesting(resignationResult,timeoutResult));
+
+    CollapseGoState normalizedTimeoutState(timeoutState);
+    CollapseGoStateTestAccess::terminalState(normalizedTimeoutState).reason =
+      CollapseGoTerminalReason::RESIGNATION;
+    testAssert(resignationState.isEqualForTesting(normalizedTimeoutState));
+    CollapseGoApplyResult normalizedTimeoutResult(timeoutResult);
+    normalizedTimeoutResult.terminalEvent->reason = CollapseGoTerminalReason::RESIGNATION;
+    assertExactApplyResult(resignationResult,normalizedTimeoutResult);
+  }
+
+  // Source-aware terminal snapshots distinguish otherwise matching occupancy and counters.
+  {
+    CollapseGoState normalState(CollapseGoConfig::allOne(9));
+    CollapseGoState doubleState(CollapseGoConfig::allOne(9));
+    playNormal(normalState,4,4);
+    playDoubleStart(doubleState,4,4);
+    CollapseGoApplyResult normalTermination = terminateAccepted(
+      normalState,P_WHITE,CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    CollapseGoApplyResult doubleTermination = terminateAccepted(
+      doubleState,P_WHITE,CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    testAssert(normalTermination.terminalEvent.has_value());
+    testAssert(doubleTermination.terminalEvent.has_value());
+    testAssert(*normalTermination.terminalEvent != *doubleTermination.terminalEvent);
+    expectStringError([&]() {
+      normalTermination.terminalEvent->validateAgainstCommittedState(doubleState);
+    });
+    expectStringError([&]() {
+      doubleTermination.terminalEvent->validateAgainstCommittedState(normalState);
+    });
+  }
+
+  // Termination-first suppresses a candidate trigger; action-first completes settlement before termination.
+  {
+    CollapseGoState decision(CollapseGoConfig::allOne(9));
+    playPass(decision);
+    testAssert(decision.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(decision.getConsecutivePasses() == 1);
+
+    CollapseGoState terminationFirst(decision);
+    CollapseGoApplyResult immediate = terminateAccepted(
+      terminationFirst,P_BLACK,CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    testAssert(immediate.terminalEvent.has_value());
+    testAssert(!immediate.settlementTriggered);
+    testAssert(terminationFirst.getAtomicActionCount() == 1);
+    testAssert(terminationFirst.getConsecutivePasses() == 1);
+    testAssert(!terminationFirst.isSettlementCompleted());
+    expectRejectedAtomically(
+      terminationFirst,P_WHITE,GameAction::pass(),CollapseGoApplyError::TERMINAL_STATE,true
+    );
+
+    CollapseGoState actionFirst(decision);
+    CollapseGoApplyResult trigger = playPass(actionFirst);
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(!trigger.terminalEvent.has_value());
+    testAssert(actionFirst.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(actionFirst.isSettlementCompleted());
+    testAssert(actionFirst.getConsecutivePasses() == 0);
+    testAssert(actionFirst.getRevision() == 2);
+    testAssert(actionFirst.getLogPosition() == 2);
+
+    CollapseGoApplyResult afterSettlement = terminateAccepted(
+      actionFirst,P_BLACK,CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    testAssert(afterSettlement.terminalEvent.has_value());
+    testAssert(!afterSettlement.settlementTriggered);
+    testAssert(afterSettlement.terminalEvent->reason == CollapseGoTerminalReason::TIMEOUT);
+    testAssert(actionFirst.getPhase() == CollapseGoPhase::TERMINAL);
+    testAssert(actionFirst.isSettlementCompleted());
+    testAssert(actionFirst.getAtomicActionCount() == 2);
+    testAssert(actionFirst.getRevision() == 3);
+    testAssert(actionFirst.getLogPosition() == 3);
+    testAssert(actionFirst.getPositionalSuperkoHistory().size() == 4);
+    testAssert(actionFirst.getScore() == CollapseGoScore());
+    actionFirst.checkConsistency();
+  }
+
+  // Pending Double is an exposed administrative boundary and retains its exact unfinished turn state.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    playDoubleStart(state,4,4);
+    CollapseGoState before(state);
+    testAssert(before.getActor() == P_BLACK);
+    testAssert(before.getPendingDouble().has_value());
+
+    CollapseGoApplyResult result = terminateAccepted(
+      state,P_WHITE,CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    testAssert(result.terminalEvent.has_value());
+    testAssert(result.terminalEvent->winner == P_BLACK);
+    testAssert(result.terminalEvent->loser == P_WHITE);
+    testAssert(!result.settlementTriggered);
+    testAssert(state.getPhase() == CollapseGoPhase::TERMINAL);
+    testAssert(state.getActor() == C_EMPTY);
+    testAssert(!state.isSettlementCompleted());
+    testAssert(state.getAtomicActionCount() == before.getAtomicActionCount());
+    testAssert(state.getConsecutivePasses() == before.getConsecutivePasses());
+    testAssert(state.getLedger() == before.getLedger());
+    testAssert(state.getPendingDouble() == before.getPendingDouble());
+    testAssert(state.getPosition().isEqualForTesting(before.getPosition()));
+    testAssert(state.getRemainingQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(state.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(state.getRevision() == before.getRevision() + 1);
+    testAssert(state.getLogPosition() == before.getLogPosition() + 1);
+    testAssert(state.getPositionalSuperkoHistory().size() ==
+      before.getPositionalSuperkoHistory().size() + 1);
+    testAssert(state.getPositionalSuperkoHistory().back() ==
+      before.getPositionalSuperkoHistory().back());
+    state.checkConsistency();
+  }
+
+  // Invalid administrative inputs and malformed typed terminal states fail without a partial commit.
+  {
+    CollapseGoState invalidLoser(CollapseGoConfig::allOne(9));
+    expectTerminationRejectedAtomically(
+      invalidLoser,C_EMPTY,CollapseGoAdministrativeTerminationReason::RESIGNATION,
+      CollapseGoApplyError::INVALID_LOSER
+    );
+    testAssert(CollapseGoReducer::deriveLegalMask(invalidLoser).any());
+
+    CollapseGoState invalidReason(CollapseGoConfig::allOne(9));
+    expectTerminationRejectedAtomically(
+      invalidReason,P_BLACK,static_cast<CollapseGoAdministrativeTerminationReason>(-1),
+      CollapseGoApplyError::INTERNAL_INVARIANT
+    );
+
+    CollapseGoState valid(CollapseGoConfig::allOne(9));
+    terminateAccepted(valid,P_BLACK,CollapseGoAdministrativeTerminationReason::RESIGNATION);
+    valid.checkConsistency();
+    expectTerminationRejectedAtomically(
+      valid,C_EMPTY,CollapseGoAdministrativeTerminationReason::TIMEOUT,
+      CollapseGoApplyError::TERMINAL_STATE
+    );
+
+    CollapseGoState missingTerminal(valid);
+    CollapseGoStateTestAccess::clearTerminalState(missingTerminal);
+    expectStringError([&]() { missingTerminal.checkConsistency(); });
+
+    CollapseGoState wrongPhase(valid);
+    CollapseGoStateTestAccess::setPhase(wrongPhase,CollapseGoPhase::COLLAPSE_PLAY);
+    expectStringError([&]() { wrongPhase.checkConsistency(); });
+
+    CollapseGoState wrongActor(valid);
+    CollapseGoStateTestAccess::setActor(wrongActor,P_BLACK);
+    expectStringError([&]() { wrongActor.checkConsistency(); });
+
+    CollapseGoState wrongRevision(valid);
+    CollapseGoStateTestAccess::setRevision(wrongRevision,0);
+    expectStringError([&]() { wrongRevision.checkConsistency(); });
+
+    CollapseGoState impossibleSettledAdministrative(CollapseGoConfig::allZero(9));
+    terminateAccepted(
+      impossibleSettledAdministrative,P_BLACK,
+      CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    CollapseGoStateTestAccess::setSettlementCompleted(impossibleSettledAdministrative,true);
+    expectStringError([&]() { impossibleSettledAdministrative.checkConsistency(); });
+
+    CollapseGoState forgedTwoNormalOrdinary(CollapseGoConfig::allZero(9));
+    playNormal(forgedTwoNormalOrdinary,0,0);
+    playNormal(forgedTwoNormalOrdinary,8,8);
+    CollapseGoStateTestAccess::setPhase(
+      forgedTwoNormalOrdinary,CollapseGoPhase::ORDINARY_PLAY
+    );
+    CollapseGoStateTestAccess::setSettlementCompleted(forgedTwoNormalOrdinary,true);
+    expectStringError([&]() { forgedTwoNormalOrdinary.checkConsistency(); });
+
+    CollapseGoState forgedTwoNormalAdministrative(CollapseGoConfig::allZero(9));
+    playNormal(forgedTwoNormalAdministrative,0,0);
+    playNormal(forgedTwoNormalAdministrative,8,8);
+    terminateAccepted(
+      forgedTwoNormalAdministrative,P_BLACK,
+      CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    CollapseGoStateTestAccess::setSettlementCompleted(forgedTwoNormalAdministrative,true);
+    expectStringError([&]() { forgedTwoNormalAdministrative.checkConsistency(); });
+
+    CollapseGoState forgedUnsettledOrdinary(CollapseGoConfig::allZero(9));
+    enterOrdinaryPlay(forgedUnsettledOrdinary);
+    CollapseGoStateTestAccess::setSettlementCompleted(forgedUnsettledOrdinary,false);
+    expectStringError([&]() { forgedUnsettledOrdinary.checkConsistency(); });
+
+    CollapseGoState forgedUnsettledAdministrative(CollapseGoConfig::allZero(9));
+    enterOrdinaryPlay(forgedUnsettledAdministrative);
+    terminateAccepted(
+      forgedUnsettledAdministrative,P_WHITE,
+      CollapseGoAdministrativeTerminationReason::TIMEOUT
+    );
+    CollapseGoStateTestAccess::setSettlementCompleted(forgedUnsettledAdministrative,false);
+    expectStringError([&]() { forgedUnsettledAdministrative.checkConsistency(); });
+
+    CollapseGoState invalidTerminalReason(valid);
+    CollapseGoStateTestAccess::terminalState(invalidTerminalReason).reason =
+      static_cast<CollapseGoTerminalReason>(-1);
+    expectStringError([&]() { invalidTerminalReason.checkConsistency(); });
+
+    CollapseGoState invalidWinner(valid);
+    CollapseGoStateTestAccess::terminalState(invalidWinner).winner = C_EMPTY;
+    expectStringError([&]() { invalidWinner.checkConsistency(); });
+
+    CollapseGoState invalidTerminalLoser(valid);
+    CollapseGoStateTestAccess::terminalState(invalidTerminalLoser).loser = P_WHITE;
+    expectStringError([&]() { invalidTerminalLoser.checkConsistency(); });
+
+    CollapseGoState administrativeScore(valid);
+    CollapseGoStateTestAccess::score(administrativeScore).isScored = true;
+    expectStringError([&]() { administrativeScore.checkConsistency(); });
+
+    CollapseGoState forgedAdministrativePenultimate(CollapseGoConfig::allOne(9));
+    playNormal(forgedAdministrativePenultimate,4,4);
+    terminateAccepted(
+      forgedAdministrativePenultimate,P_BLACK,
+      CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    const size_t administrativePenultimateIndex =
+      forgedAdministrativePenultimate.getPositionalSuperkoHistory().size() - 2;
+    vector<uint8_t> forgedAdministrativeOccupancy = forgedAdministrativePenultimate
+      .getPositionalSuperkoHistory().at(administrativePenultimateIndex).getOccupancy();
+    forgedAdministrativeOccupancy[0] = static_cast<uint8_t>(C_WHITE);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedAdministrativePenultimate,
+      administrativePenultimateIndex,
+      forgedAdministrativeOccupancy
+    );
+    expectStringError([&]() { forgedAdministrativePenultimate.checkConsistency(); });
+
+    CollapseGoState forgedAdministrativeSources(CollapseGoConfig::allZero(9));
+    playNormal(forgedAdministrativeSources,0,0);
+    playNormal(forgedAdministrativeSources,8,8);
+    terminateAccepted(
+      forgedAdministrativeSources,P_BLACK,
+      CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    CollapseGoStateTestAccess::swapStoneSources(
+      forgedAdministrativeSources,0,8 + 8 * 9
+    );
+    expectStringError([&]() { forgedAdministrativeSources.checkConsistency(); });
+
+    CollapseGoState replayedSource(CollapseGoConfig::allZero(9));
+    playNormal(replayedSource,0,0);
+    playNormal(replayedSource,1,0);
+    playNormal(replayedSource,2,0);
+    playNormal(replayedSource,0,1);
+    testAssert(replayedSource.getPosition().getColor(0,0) == C_EMPTY);
+    playNormal(replayedSource,1,1);
+    playNormal(replayedSource,8,8);
+    playNormal(replayedSource,0,0);
+    testAssert(replayedSource.getPosition().getColor(1,0) == C_EMPTY);
+    terminateAccepted(
+      replayedSource,P_WHITE,
+      CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    CollapseGoStateTestAccess::relabelStoneSource(
+      replayedSource,
+      0,
+      CollapseGoStoneSource(1,GameActionKind::NORMAL,nullopt)
+    );
+    expectStringError([&]() { replayedSource.checkConsistency(); });
+
+    CollapseGoState relabeledSpecialAsNormal(CollapseGoConfig::allOne(9));
+    playDoubleStart(relabeledSpecialAsNormal,4,4);
+    playPass(relabeledSpecialAsNormal);
+    terminateAccepted(
+      relabeledSpecialAsNormal,P_BLACK,
+      CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    CollapseGoStateTestAccess::relabelStoneSource(
+      relabeledSpecialAsNormal,
+      4 + 4 * 9,
+      CollapseGoStoneSource(1,GameActionKind::NORMAL,nullopt)
+    );
+    CollapseGoStateTestAccess::ledgerEntry(
+      relabeledSpecialAsNormal,0
+    ).stoneState = CollapseGoLedgerStoneState::CAPTURED;
+    expectStringError([&]() { relabeledSpecialAsNormal.checkConsistency(); });
+
+    CollapseGoState pending(CollapseGoConfig::allOne(9));
+    playDoubleStart(pending,4,4);
+    terminateAccepted(pending,P_BLACK,CollapseGoAdministrativeTerminationReason::TIMEOUT);
+    pending.checkConsistency();
+
+    CollapseGoState missingTerminalPending(pending);
+    CollapseGoStateTestAccess::clearPendingDouble(missingTerminalPending);
+    expectStringError([&]() { missingTerminalPending.checkConsistency(); });
+
+    CollapseGoState mismatchedTerminalPending(pending);
+    CollapseGoStateTestAccess::setPendingDouble(mismatchedTerminalPending,P_WHITE,1,1);
+    expectStringError([&]() { mismatchedTerminalPending.checkConsistency(); });
+  }
+
   // Two new ordinary-play passes score the current stable board and append both action and terminal occupancies.
   {
     CollapseGoState state(CollapseGoConfig::allOne(9));
@@ -2513,6 +3364,7 @@ void Tests::runCollapseReducerTests() {
     testAssert(finalPass.accepted);
     testAssert(finalPass.positionalSuperkoAppends == 2);
     testAssert(finalPass.terminalScoreEventEmitted);
+    testAssert(finalPass.terminalEvent.has_value());
     testAssert(!finalPass.settlementTriggered);
     testAssert(state.getPhase() == CollapseGoPhase::TERMINAL);
     testAssert(state.getActor() == C_EMPTY);
@@ -2539,6 +3391,306 @@ void Tests::runCollapseReducerTests() {
     testAssert(score.winner == P_WHITE);
     testAssert(score.marginNumerator == 13);
     testAssert(score.getMargin() == 6.5);
+
+    testAssert(state.getTerminalState().has_value());
+    const CollapseGoTerminalState& terminal = *state.getTerminalState();
+    testAssert(terminal.reason == CollapseGoTerminalReason::SCORE);
+    testAssert(terminal.winner == P_WHITE);
+    testAssert(terminal.loser == P_BLACK);
+    const CollapseGoTerminalEvent& event = *finalPass.terminalEvent;
+    testAssert(event.reason == CollapseGoTerminalReason::SCORE);
+    testAssert(event.winner == terminal.winner);
+    testAssert(event.loser == terminal.loser);
+    testAssert(event.score == score);
+    testAssert(event.settlementCompleted);
+    testAssert(event.stablePosition.isEqualForTesting(state.getPosition()));
+    testAssert(event.stableOccupancy == state.getPosition().getRowMajorOccupancy());
+    testAssert(event.positionalSuperkoHistoryIndex == 9);
+    testAssert(event.revision == 8);
+    testAssert(event.logPosition == 9);
+    CollapseGoTerminalEvent expectedEvent =
+      CollapseGoTerminalEvent::fromCommittedState(state);
+    expectedEvent.validateAgainstCommittedState(state);
+    testAssert(event == expectedEvent);
+
+    CollapseGoTerminalEvent forgedReason(event);
+    forgedReason.reason = CollapseGoTerminalReason::TIMEOUT;
+    expectStringError([&]() { forgedReason.validateAgainstCommittedState(state); });
+
+    CollapseGoTerminalEvent forgedWinner(event);
+    forgedWinner.winner = P_BLACK;
+    expectStringError([&]() { forgedWinner.validateAgainstCommittedState(state); });
+
+    CollapseGoTerminalEvent forgedLoser(event);
+    forgedLoser.loser = P_WHITE;
+    expectStringError([&]() { forgedLoser.validateAgainstCommittedState(state); });
+
+    CollapseGoTerminalEvent forgedEventScore(event);
+    forgedEventScore.score.marginNumerator++;
+    expectStringError([&]() { forgedEventScore.validateAgainstCommittedState(state); });
+
+    CollapseGoTerminalEvent forgedSettlementProvenance(event);
+    forgedSettlementProvenance.settlementCompleted = false;
+    expectStringError([&]() {
+      forgedSettlementProvenance.validateAgainstCommittedState(state);
+    });
+
+    CollapseGoTerminalEvent forgedStablePosition(event);
+    forgedStablePosition.stablePosition.removeStone(0 + 1 * 9);
+    expectStringError([&]() { forgedStablePosition.validateAgainstCommittedState(state); });
+
+    CollapseGoTerminalEvent forgedEventOccupancy(event);
+    forgedEventOccupancy.stableOccupancy[0] =
+      forgedEventOccupancy.stableOccupancy[0] == static_cast<uint8_t>(C_BLACK) ?
+      static_cast<uint8_t>(C_EMPTY) : static_cast<uint8_t>(C_BLACK);
+    expectStringError([&]() { forgedEventOccupancy.validateAgainstCommittedState(state); });
+
+    for(int64_t CollapseGoTerminalEvent::* metadataField: {
+      &CollapseGoTerminalEvent::positionalSuperkoHistoryIndex,
+      &CollapseGoTerminalEvent::revision,
+      &CollapseGoTerminalEvent::logPosition,
+    }) {
+      CollapseGoTerminalEvent staleEvent(event);
+      staleEvent.*metadataField -= 1;
+      expectStringError([&]() { staleEvent.validateAgainstCommittedState(state); });
+    }
+
+    CollapseGoState scoredState(state);
+
+    CollapseGoState extraOrdinaryPass(scoredState);
+    const size_t terminalHistoryIndex =
+      extraOrdinaryPass.getPositionalSuperkoHistory().size() - 1;
+    CollapseGoStateTestAccess::insertPskOccupancy(
+      extraOrdinaryPass,
+      terminalHistoryIndex,
+      extraOrdinaryPass.getPositionalSuperkoHistory().at(terminalHistoryIndex).getOccupancy()
+    );
+    CollapseGoStateTestAccess::setAtomicActionCount(
+      extraOrdinaryPass,extraOrdinaryPass.getAtomicActionCount() + 1
+    );
+    CollapseGoStateTestAccess::setRevision(
+      extraOrdinaryPass,extraOrdinaryPass.getRevision() + 1
+    );
+    CollapseGoStateTestAccess::setLogPosition(
+      extraOrdinaryPass,extraOrdinaryPass.getLogPosition() + 1
+    );
+    expectStringError([&]() { extraOrdinaryPass.checkConsistency(); });
+
+    CollapseGoState relabeledScore(scoredState);
+    CollapseGoStateTestAccess::terminalState(relabeledScore).reason =
+      CollapseGoTerminalReason::TIMEOUT;
+    CollapseGoStateTestAccess::score(relabeledScore) = CollapseGoScore();
+    CollapseGoStateTestAccess::setConsecutivePasses(relabeledScore,1);
+    CollapseGoStateTestAccess::setRevision(
+      relabeledScore,relabeledScore.getAtomicActionCount() + 1
+    );
+    expectStringError([&]() { relabeledScore.checkConsistency(); });
+
+    CollapseGoState forgedRelabeledScore(scoredState);
+    CollapseGoStateTestAccess::terminalState(forgedRelabeledScore).reason =
+      CollapseGoTerminalReason::TIMEOUT;
+    CollapseGoStateTestAccess::score(forgedRelabeledScore) = CollapseGoScore();
+    CollapseGoStateTestAccess::setConsecutivePasses(forgedRelabeledScore,0);
+    CollapseGoStateTestAccess::setRevision(
+      forgedRelabeledScore,forgedRelabeledScore.getAtomicActionCount() + 1
+    );
+    const size_t forgedRelabelIndex =
+      forgedRelabeledScore.getPositionalSuperkoHistory().size() - 3;
+    vector<uint8_t> forgedRelabelOccupancy = forgedRelabeledScore
+      .getPositionalSuperkoHistory().at(forgedRelabelIndex).getOccupancy();
+    forgedRelabelOccupancy[0] = static_cast<uint8_t>(C_BLACK);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedRelabeledScore,forgedRelabelIndex,forgedRelabelOccupancy
+    );
+    expectStringError([&]() { forgedRelabeledScore.checkConsistency(); });
+
+    CollapseGoState forgedSourceAndPsk(CollapseGoConfig::allZero(9));
+    playPass(forgedSourceAndPsk);
+    playPass(forgedSourceAndPsk);
+    playNormal(forgedSourceAndPsk,0,0);
+    playPass(forgedSourceAndPsk);
+    playPass(forgedSourceAndPsk);
+    testAssert(forgedSourceAndPsk.getPhase() == CollapseGoPhase::TERMINAL);
+    CollapseGoStateTestAccess::terminalState(forgedSourceAndPsk).reason =
+      CollapseGoTerminalReason::TIMEOUT;
+    CollapseGoStateTestAccess::score(forgedSourceAndPsk) = CollapseGoScore();
+    CollapseGoStateTestAccess::setConsecutivePasses(forgedSourceAndPsk,0);
+    CollapseGoStateTestAccess::setRevision(
+      forgedSourceAndPsk,forgedSourceAndPsk.getAtomicActionCount() + 1
+    );
+    CollapseGoStateTestAccess::relabelStoneSource(
+      forgedSourceAndPsk,
+      0,
+      CollapseGoStoneSource(5,GameActionKind::NORMAL,nullopt)
+    );
+    vector<uint8_t> forgedSourcePriorOccupancy = forgedSourceAndPsk
+      .getPositionalSuperkoHistory().at(4).getOccupancy();
+    forgedSourcePriorOccupancy[0] = static_cast<uint8_t>(C_EMPTY);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedSourceAndPsk,4,forgedSourcePriorOccupancy
+    );
+    expectStringError([&]() { forgedSourceAndPsk.checkConsistency(); });
+
+    CollapseGoState forgedEarlierScoreBoundary(CollapseGoConfig::allZero(9));
+    playPass(forgedEarlierScoreBoundary);
+    playPass(forgedEarlierScoreBoundary);
+    playNormal(forgedEarlierScoreBoundary,0,0);
+    playPass(forgedEarlierScoreBoundary);
+    playPass(forgedEarlierScoreBoundary);
+    CollapseGoStateTestAccess::terminalState(forgedEarlierScoreBoundary).reason =
+      CollapseGoTerminalReason::TIMEOUT;
+    CollapseGoStateTestAccess::score(forgedEarlierScoreBoundary) = CollapseGoScore();
+    CollapseGoStateTestAccess::setConsecutivePasses(forgedEarlierScoreBoundary,0);
+    CollapseGoStateTestAccess::setRevision(
+      forgedEarlierScoreBoundary,forgedEarlierScoreBoundary.getAtomicActionCount() + 1
+    );
+    CollapseGoStateTestAccess::relabelStoneSource(
+      forgedEarlierScoreBoundary,
+      0,
+      CollapseGoStoneSource(5,GameActionKind::NORMAL,nullopt)
+    );
+    const vector<uint8_t> emptyOccupancy = forgedEarlierScoreBoundary
+      .getPositionalSuperkoHistory().at(0).getOccupancy();
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedEarlierScoreBoundary,3,emptyOccupancy
+    );
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedEarlierScoreBoundary,4,emptyOccupancy
+    );
+    expectStringError([&]() { forgedEarlierScoreBoundary.checkConsistency(); });
+
+    CollapseGoState suppressedEarlyTrigger(CollapseGoConfig::allZero(9));
+    playPass(suppressedEarlyTrigger);
+    playPass(suppressedEarlyTrigger);
+    int placed = 0;
+    for(int point = 0; point < 9 * 9 && placed < 32; point++) {
+      const int x = point % 9;
+      const int y = point / 9;
+      if((x + y) % 2 != 0)
+        continue;
+      playNormal(suppressedEarlyTrigger,x,y);
+      placed += 1;
+    }
+    testAssert(placed == 32);
+    testAssert(suppressedEarlyTrigger.getAtomicActionCount() == 34);
+    testAssert(suppressedEarlyTrigger.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    CollapseGoStateTestAccess::relabelStoneSource(
+      suppressedEarlyTrigger,
+      0,
+      CollapseGoStoneSource(2,GameActionKind::NORMAL,nullopt)
+    );
+    expectStringError([&]() { suppressedEarlyTrigger.checkConsistency(); });
+
+    CollapseGoState impossibleScoreProvenance(scoredState);
+    CollapseGoStateTestAccess::setAtomicActionCount(impossibleScoreProvenance,2);
+    CollapseGoStateTestAccess::setRevision(impossibleScoreProvenance,2);
+    CollapseGoStateTestAccess::setLogPosition(impossibleScoreProvenance,3);
+    CollapseGoStateTestAccess::resetPskToRepeatedCurrent(impossibleScoreProvenance,4);
+    expectStringError([&]() { impossibleScoreProvenance.checkConsistency(); });
+
+    CollapseGoState forgedFirstOrdinaryPass(scoredState);
+    const size_t firstOrdinaryPassIndex =
+      forgedFirstOrdinaryPass.getPositionalSuperkoHistory().size() - 4;
+    vector<uint8_t> forgedFirstPassOccupancy = forgedFirstOrdinaryPass
+      .getPositionalSuperkoHistory().at(firstOrdinaryPassIndex).getOccupancy();
+    forgedFirstPassOccupancy[static_cast<size_t>(4 + 4 * 9)] = static_cast<uint8_t>(C_BLACK);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedFirstOrdinaryPass,firstOrdinaryPassIndex,forgedFirstPassOccupancy
+    );
+    expectStringError([&]() { forgedFirstOrdinaryPass.checkConsistency(); });
+
+    for(CollapseGoAdministrativeTerminationReason reason: {
+      CollapseGoAdministrativeTerminationReason::RESIGNATION,
+      CollapseGoAdministrativeTerminationReason::TIMEOUT,
+    }) {
+      expectTerminationRejectedAtomically(
+        state,P_BLACK,reason,CollapseGoApplyError::TERMINAL_STATE
+      );
+      testAssert(state.isEqualForTesting(scoredState));
+    }
+
+    CollapseGoState mismatchedScoreWinner(scoredState);
+    CollapseGoTerminalState& mismatchedTerminal =
+      CollapseGoStateTestAccess::terminalState(mismatchedScoreWinner);
+    mismatchedTerminal.winner = P_BLACK;
+    mismatchedTerminal.loser = P_WHITE;
+    expectStringError([&]() { mismatchedScoreWinner.checkConsistency(); });
+
+    for(int CollapseGoScore::* field: {
+      &CollapseGoScore::blackStones,
+      &CollapseGoScore::whiteStones,
+      &CollapseGoScore::blackTerritory,
+      &CollapseGoScore::whiteTerritory,
+      &CollapseGoScore::blackScoreNumerator,
+      &CollapseGoScore::whiteScoreNumerator,
+      &CollapseGoScore::marginNumerator,
+    }) {
+      CollapseGoState forgedScore(scoredState);
+      CollapseGoStateTestAccess::score(forgedScore).*field += 1;
+      expectStringError([&]() { forgedScore.checkConsistency(); });
+      expectStringError([&]() {
+        (void)CollapseGoTerminalEvent::fromCommittedState(forgedScore);
+      });
+    }
+    CollapseGoState forgedScoreWinner(scoredState);
+    CollapseGoStateTestAccess::score(forgedScoreWinner).winner = P_BLACK;
+    expectStringError([&]() { forgedScoreWinner.checkConsistency(); });
+    expectStringError([&]() {
+      (void)CollapseGoTerminalEvent::fromCommittedState(forgedScoreWinner);
+    });
+
+    CollapseGoState forgedPenultimatePsk(scoredState);
+    const size_t penultimateIndex =
+      forgedPenultimatePsk.getPositionalSuperkoHistory().size() - 2;
+    vector<uint8_t> forgedPenultimateOccupancy =
+      forgedPenultimatePsk.getPositionalSuperkoHistory().at(penultimateIndex).getOccupancy();
+    forgedPenultimateOccupancy[static_cast<size_t>(4 + 4 * 9)] = static_cast<uint8_t>(C_BLACK);
+    CollapseGoStateTestAccess::replacePskOccupancy(
+      forgedPenultimatePsk,penultimateIndex,forgedPenultimateOccupancy
+    );
+    expectStringError([&]() { forgedPenultimatePsk.checkConsistency(); });
+    expectStringError([&]() {
+      (void)CollapseGoTerminalEvent::fromCommittedState(forgedPenultimatePsk);
+    });
+  }
+
+  // A reachable one-stone position scores the whole remaining 9x9 area for Black.
+  {
+    CollapseGoState state(CollapseGoConfig::allOne(9));
+    enterOrdinaryPlay(state);
+    playNormal(state,4,4);
+    playPass(state);
+    CollapseGoApplyResult finalPass = playPass(state);
+
+    testAssert(finalPass.terminalScoreEventEmitted);
+    testAssert(finalPass.terminalEvent.has_value());
+    testAssert(state.getPhase() == CollapseGoPhase::TERMINAL);
+    state.checkConsistency();
+
+    const CollapseGoScore& score = state.getScore();
+    testAssert(score.isScored);
+    testAssert(score.blackStones == 1);
+    testAssert(score.whiteStones == 0);
+    testAssert(score.blackTerritory == 80);
+    testAssert(score.whiteTerritory == 0);
+    testAssert(score.blackScoreNumerator == 162);
+    testAssert(score.whiteScoreNumerator == 15);
+    testAssert(score.getBlackScore() == 81.0);
+    testAssert(score.getWhiteScore() == 7.5);
+    testAssert(score.winner == P_BLACK);
+    testAssert(score.marginNumerator == 147);
+    testAssert(score.getMargin() == 73.5);
+
+    testAssert(state.getTerminalState().has_value());
+    const CollapseGoTerminalState& terminal = *state.getTerminalState();
+    testAssert(terminal.reason == CollapseGoTerminalReason::SCORE);
+    testAssert(terminal.winner == P_BLACK);
+    testAssert(terminal.loser == P_WHITE);
+    testAssert(finalPass.terminalEvent->winner == P_BLACK);
+    testAssert(finalPass.terminalEvent->loser == P_WHITE);
+    testAssert(finalPass.terminalEvent->score == score);
+    const PositionalSuperkoHistory& history = state.getPositionalSuperkoHistory();
+    testAssert(history.at(history.size() - 1) == history.at(history.size() - 2));
   }
 
   // Reducer-produced action-before-automatic-transition snapshots are audit-only, not decisions.
@@ -2812,6 +3964,273 @@ void Tests::runCollapseReducerTests() {
     }
   }
 
+  // A pending-Double checkpoint restores by assignment and replays D/E/I settlement exactly.
+  {
+    const int boardSize = 9;
+    const vector<CollapseGoReplayStep> prefix = {
+      {P_BLACK,specialAction(GameActionKind::IMMORTAL,boardSize,0,0)},
+      {P_WHITE,specialAction(GameActionKind::EIGHTWAY,boardSize,8,8)},
+      {P_BLACK,specialAction(GameActionKind::DOUBLE_START,boardSize,1,0)},
+    };
+    const vector<CollapseGoReplayStep> suffix = {
+      {P_BLACK,normalAction(boardSize,2,0)},
+      {P_WHITE,GameAction::pass()},
+      {P_BLACK,GameAction::pass()},
+    };
+
+    CollapseGoState checkpoint(CollapseGoConfig::allOne(boardSize));
+    for(const CollapseGoReplayStep& step: prefix)
+      applyAccepted(checkpoint,step.first,step.second);
+    checkpoint.checkConsistency();
+    testAssert(checkpoint.getAtomicActionCount() == 3);
+    testAssert(checkpoint.getRevision() == 3);
+    testAssert(checkpoint.getLogPosition() == 3);
+    testAssert(checkpoint.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(checkpoint.getActor() == P_BLACK);
+    testAssert(checkpoint.getPendingDouble().has_value());
+    testAssert(checkpoint.getPendingDouble()->owner == P_BLACK);
+    testAssert(checkpoint.getPendingDouble()->originActionNumber == 3);
+    testAssert(checkpoint.getLedger().size() == 3);
+    CollapseGoLegalMask checkpointMask = deriveStableReplayMask(checkpoint);
+    testAssert(checkpointMask.count() == 79);
+    testAssert(checkpointMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,boardSize,2,0
+    ))));
+    testAssert(checkpointMask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+    for(GameActionKind kind: {
+      GameActionKind::IMMORTAL,
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+    })
+      testAssert(!checkpointMask.test(static_cast<size_t>(actionIdAt(kind,boardSize,2,0))));
+
+    CollapseGoState immutableCheckpoint(checkpoint);
+    CollapseGoSuffixRecord replay = assertDeterministicSuffixReplay(checkpoint,prefix,suffix);
+    testAssert(checkpoint.isEqualForTesting(immutableCheckpoint));
+    testAssert(replay.legalMasks.front() == checkpointMask);
+    testAssert(replay.results.size() == 3);
+    testAssert(!replay.results[0].atomicStateSnapshot.has_value());
+    testAssert(!replay.results[1].atomicStateSnapshot.has_value());
+
+    const CollapseGoApplyResult& trigger = replay.results[2];
+    testAssert(trigger.settlementTriggered);
+    testAssert(trigger.settlementReason == CollapseGoSettlementReason::PRE_THRESHOLD_TWO_PASSES);
+    testAssert(trigger.atomicStateSnapshot.has_value());
+    testAssert(trigger.atomicStateSnapshot->getAtomicActionCount() == 6);
+    testAssert(trigger.atomicStateSnapshot->getConsecutivePasses() == 2);
+    testAssert(trigger.atomicStateSnapshot->getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(trigger.atomicStateSnapshot->getActor() == P_WHITE);
+    testAssert(trigger.capturedStones.empty());
+    testAssert(!trigger.terminalEvent.has_value());
+    testAssert(!trigger.terminalScoreEventEmitted);
+    testAssert(trigger.positionalSuperkoAppends == 4);
+    testAssert(trigger.settlementSteps.size() == 3);
+    const int64_t expectedOrigins[3] = {3,2,1};
+    const Player expectedOwners[3] = {P_BLACK,P_WHITE,P_BLACK};
+    const GameActionKind expectedKinds[3] = {
+      GameActionKind::DOUBLE_START,
+      GameActionKind::EIGHTWAY,
+      GameActionKind::IMMORTAL,
+    };
+    const int expectedSources[3] = {1,80,0};
+    const bool expectedNoOp[3] = {true,false,false};
+    for(size_t index = 0; index < trigger.settlementSteps.size(); index++) {
+      const CollapseGoSettlementStep& step = trigger.settlementSteps[index];
+      testAssert(step.stepIndex == static_cast<int64_t>(index));
+      testAssert(step.originActionNumber == expectedOrigins[index]);
+      testAssert(step.owner == expectedOwners[index]);
+      testAssert(step.originKind == expectedKinds[index]);
+      testAssert(step.sourcePoint == expectedSources[index]);
+      testAssert(step.noOp == expectedNoOp[index]);
+      testAssert(step.abilityDeactivated != expectedNoOp[index]);
+      testAssert(step.removalBatches.empty());
+      testAssert(step.positionalSuperkoHistoryIndex == static_cast<int64_t>(7 + index));
+    }
+
+    const CollapseGoState& finalState = replay.finalState;
+    testAssert(finalState.getAtomicActionCount() == 6);
+    testAssert(finalState.getRevision() == 6);
+    testAssert(finalState.getLogPosition() == 9);
+    testAssert(finalState.getSettledLedgerCount() == 3);
+    testAssert(finalState.getStableTerminalEventCount() == 0);
+    testAssert(finalState.getPositionalSuperkoHistory().size() == 10);
+    testAssert(finalState.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(finalState.getActor() == P_WHITE);
+    testAssert(finalState.isSettlementCompleted());
+    testAssert(!finalState.getPendingDouble().has_value());
+    testAssert(!finalState.getTerminalState().has_value());
+    testAssert(replay.legalMasks.back().count() == 78);
+    for(Player player: {P_BLACK,P_WHITE}) {
+      for(CollapseGoAbility ability: {
+        CollapseGoAbility::IMMORTAL,
+        CollapseGoAbility::DOUBLE_MOVE,
+        CollapseGoAbility::EIGHTWAY,
+      }) {
+        testAssert(finalState.getInitialQuota(player,ability) == 1);
+        testAssert(finalState.getRemainingQuota(player,ability) == 0);
+      }
+    }
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 0);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 1);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 1);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 0);
+    finalState.checkConsistency();
+  }
+
+  // A post-settlement checkpoint preserves a Double source until its later exact capture and score.
+  {
+    const int boardSize = 9;
+    const vector<CollapseGoReplayStep> prefix = {
+      {P_BLACK,specialAction(GameActionKind::DOUBLE_START,boardSize,0,0)},
+      {P_BLACK,normalAction(boardSize,8,8)},
+      {P_WHITE,GameAction::pass()},
+      {P_BLACK,GameAction::pass()},
+    };
+    const vector<CollapseGoReplayStep> suffix = {
+      {P_WHITE,normalAction(boardSize,1,0)},
+      {P_BLACK,normalAction(boardSize,4,4)},
+      {P_WHITE,normalAction(boardSize,0,1)},
+      {P_BLACK,GameAction::pass()},
+      {P_WHITE,GameAction::pass()},
+    };
+
+    CollapseGoState checkpoint(CollapseGoConfig::allOne(boardSize));
+    for(const CollapseGoReplayStep& step: prefix)
+      applyAccepted(checkpoint,step.first,step.second);
+    checkpoint.checkConsistency();
+    testAssert(checkpoint.getAtomicActionCount() == 4);
+    testAssert(checkpoint.getRevision() == 4);
+    testAssert(checkpoint.getLogPosition() == 5);
+    testAssert(checkpoint.getSettledLedgerCount() == 1);
+    testAssert(checkpoint.getStableTerminalEventCount() == 0);
+    testAssert(checkpoint.getPositionalSuperkoHistory().size() == 6);
+    testAssert(checkpoint.getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(checkpoint.getActor() == P_WHITE);
+    testAssert(checkpoint.isSettlementCompleted());
+    testAssert(checkpoint.getLedger().size() == 1);
+    const CollapseGoLedgerEntry& checkpointEntry = checkpoint.getLedger().at(0);
+    testAssert(checkpointEntry.specialLink == 1);
+    testAssert(checkpointEntry.originActionNumber == 1);
+    testAssert(checkpointEntry.owner == P_BLACK);
+    testAssert(checkpointEntry.originKind == GameActionKind::DOUBLE_START);
+    testAssert(checkpointEntry.sourcePoint == 0);
+    testAssert(checkpointEntry.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(checkpointEntry.stoneState == CollapseGoLedgerStoneState::ON_BOARD);
+    testAssert(checkpointEntry.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(checkpointEntry.tombstone);
+    const CollapseGoCell& checkpointSourceCell = checkpoint.getPosition().getCell(0);
+    testAssert(checkpointSourceCell.getColor() == C_BLACK);
+    const CollapseGoStoneSource checkpointSource = checkpointSourceCell.getSource();
+    testAssert(checkpointSource.originActionNumber == 1);
+    testAssert(checkpointSource.originKind == GameActionKind::DOUBLE_START);
+    testAssert(checkpointSource.specialLink.has_value());
+    testAssert(*checkpointSource.specialLink == 1);
+    CollapseGoLegalMask checkpointMask = deriveStableReplayMask(checkpoint);
+    testAssert(checkpointMask.count() == 80);
+    testAssert(checkpointMask.test(static_cast<size_t>(actionIdAt(
+      GameActionKind::NORMAL,boardSize,1,0
+    ))));
+    testAssert(checkpointMask.test(static_cast<size_t>(GameAction::PASS_ACTION_ID)));
+
+    CollapseGoState immutableCheckpoint(checkpoint);
+    CollapseGoSuffixRecord replay = assertDeterministicSuffixReplay(checkpoint,prefix,suffix);
+    testAssert(checkpoint.isEqualForTesting(immutableCheckpoint));
+    testAssert(replay.legalMasks.front() == checkpointMask);
+    testAssert(replay.results.size() == 5);
+    testAssert(replay.statesAfterActions[0].getPosition().getCell(0).getSource() == checkpointSource);
+    testAssert(replay.statesAfterActions[1].getPosition().getCell(0).getSource() == checkpointSource);
+
+    const CollapseGoApplyResult& capture = replay.results[2];
+    testAssert(capture.capturedStones == vector<Loc>({Location::getLoc(0,0,boardSize)}));
+    testAssert(!capture.atomicStateSnapshot.has_value());
+    testAssert(!capture.settlementTriggered);
+    testAssert(capture.settlementSteps.empty());
+    testAssert(!capture.terminalEvent.has_value());
+    testAssert(capture.positionalSuperkoAppends == 1);
+    const CollapseGoState& afterCapture = replay.statesAfterActions[2];
+    testAssert(afterCapture.getPosition().isEmpty(0));
+    testAssert(afterCapture.getAtomicActionCount() == 7);
+    testAssert(afterCapture.getRevision() == 7);
+    testAssert(afterCapture.getLogPosition() == 8);
+    testAssert(afterCapture.getSettledLedgerCount() == 1);
+    testAssert(afterCapture.getPositionalSuperkoHistory().size() == 9);
+    const CollapseGoLedgerEntry& capturedEntry = afterCapture.getLedger().at(0);
+    testAssert(capturedEntry.specialLink == checkpointEntry.specialLink);
+    testAssert(capturedEntry.originActionNumber == checkpointEntry.originActionNumber);
+    testAssert(capturedEntry.owner == checkpointEntry.owner);
+    testAssert(capturedEntry.originKind == checkpointEntry.originKind);
+    testAssert(capturedEntry.sourcePoint == checkpointEntry.sourcePoint);
+    testAssert(capturedEntry.abilityState == CollapseGoLedgerAbilityState::INACTIVE);
+    testAssert(capturedEntry.stoneState == CollapseGoLedgerStoneState::CAPTURED);
+    testAssert(capturedEntry.settlementState == CollapseGoLedgerSettlementState::SETTLED);
+    testAssert(capturedEntry.tombstone);
+
+    const CollapseGoApplyResult& terminal = replay.results[4];
+    testAssert(terminal.capturedStones.empty());
+    testAssert(terminal.atomicStateSnapshot.has_value());
+    testAssert(terminal.atomicStateSnapshot->getAtomicActionCount() == 9);
+    testAssert(terminal.atomicStateSnapshot->getRevision() == 9);
+    testAssert(terminal.atomicStateSnapshot->getLogPosition() == 10);
+    testAssert(terminal.atomicStateSnapshot->getPhase() == CollapseGoPhase::ORDINARY_PLAY);
+    testAssert(terminal.atomicStateSnapshot->getConsecutivePasses() == 2);
+    testAssert(!terminal.settlementTriggered);
+    testAssert(terminal.settlementSteps.empty());
+    testAssert(terminal.terminalScoreEventEmitted);
+    testAssert(terminal.terminalEvent.has_value());
+    testAssert(terminal.terminalEvent->reason == CollapseGoTerminalReason::SCORE);
+    testAssert(terminal.terminalEvent->positionalSuperkoHistoryIndex == 11);
+    testAssert(terminal.terminalEvent->revision == 9);
+    testAssert(terminal.terminalEvent->logPosition == 11);
+    testAssert(terminal.positionalSuperkoAppends == 2);
+
+    const CollapseGoState& finalState = replay.finalState;
+    testAssert(finalState.getAtomicActionCount() == 9);
+    testAssert(finalState.getRevision() == 9);
+    testAssert(finalState.getLogPosition() == 11);
+    testAssert(finalState.getSettledLedgerCount() == 1);
+    testAssert(finalState.getStableTerminalEventCount() == 1);
+    testAssert(finalState.getPositionalSuperkoHistory().size() == 12);
+    testAssert(finalState.getPhase() == CollapseGoPhase::TERMINAL);
+    testAssert(finalState.getActor() == C_EMPTY);
+    testAssert(finalState.isSettlementCompleted());
+    testAssert(finalState.getTerminalState().has_value());
+    testAssert(finalState.getTerminalState()->reason == CollapseGoTerminalReason::SCORE);
+    testAssert(replay.legalMasks.back().none());
+    const CollapseGoLedgerEntry& finalEntry = finalState.getLedger().at(0);
+    testAssert(finalEntry == capturedEntry);
+    for(Player player: {P_BLACK,P_WHITE}) {
+      for(CollapseGoAbility ability: {
+        CollapseGoAbility::IMMORTAL,
+        CollapseGoAbility::DOUBLE_MOVE,
+        CollapseGoAbility::EIGHTWAY,
+      }) {
+        testAssert(finalState.getInitialQuota(player,ability) == 1);
+        testAssert(finalState.getRemainingQuota(player,ability) == 0);
+      }
+    }
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(finalState.getUsedQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 0);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(finalState.getExpiredQuota(P_BLACK,CollapseGoAbility::EIGHTWAY) == 1);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 0);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 0);
+    testAssert(finalState.getUsedQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 0);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::IMMORTAL) == 1);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::DOUBLE_MOVE) == 1);
+    testAssert(finalState.getExpiredQuota(P_WHITE,CollapseGoAbility::EIGHTWAY) == 1);
+    finalState.checkConsistency();
+  }
+
   // Copy-then-commit preserves the original exact state while the copy advances independently.
   {
     CollapseGoState original(CollapseGoConfig::allOne(9));
@@ -2830,5 +4249,30 @@ void Tests::runCollapseReducerTests() {
     testAssert(!original.isEqualForTesting(committed));
     original.checkConsistency();
     committed.checkConsistency();
+
+    CollapseGoState administrativeOriginal(CollapseGoConfig::allOne(9));
+    playNormal(administrativeOriginal,4,4);
+    CollapseGoState administrativeCommitted(administrativeOriginal);
+    CollapseGoApplyResult termination = terminateAccepted(
+      administrativeCommitted,P_BLACK,CollapseGoAdministrativeTerminationReason::RESIGNATION
+    );
+    testAssert(termination.terminalEvent.has_value());
+    testAssert(!administrativeOriginal.getTerminalState().has_value());
+    testAssert(administrativeOriginal.getPhase() == CollapseGoPhase::COLLAPSE_PLAY);
+    testAssert(administrativeOriginal.getActor() == P_WHITE);
+    testAssert(administrativeOriginal.getRevision() == 1);
+    testAssert(administrativeCommitted.getTerminalState().has_value());
+    testAssert(administrativeCommitted.getRevision() == 2);
+    testAssert(!administrativeOriginal.isEqualForTesting(administrativeCommitted));
+
+    CollapseGoState copiedTerminal(administrativeCommitted);
+    testAssert(copiedTerminal.isEqualForTesting(administrativeCommitted));
+    CollapseGoState assignedTerminal(CollapseGoConfig::allZero(13));
+    assignedTerminal = administrativeCommitted;
+    testAssert(assignedTerminal.isEqualForTesting(administrativeCommitted));
+    administrativeOriginal.checkConsistency();
+    administrativeCommitted.checkConsistency();
+    copiedTerminal.checkConsistency();
+    assignedTerminal.checkConsistency();
   }
 }
